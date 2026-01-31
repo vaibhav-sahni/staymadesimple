@@ -15,3 +15,25 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     user_id: Optional[int] = None
     role: Optional[str] = None
+
+
+class PropertyCreate(BaseModel):
+    property_description: str
+    room_description: str
+    property_type: Optional[str] = None
+    city: str
+    address: str
+    google_maps_link: Optional[str] = None
+
+
+class PropertyRead(BaseModel):
+    property_id: int
+    owner_id: int
+    property_description: str
+    room_description: str
+    property_type: Optional[str] = None
+    city: str
+    address: str
+    google_maps_link: Optional[str] = None
+    verification_status: Optional[str] = None
+    average_rating: Optional[float] = None
