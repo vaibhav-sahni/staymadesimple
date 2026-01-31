@@ -52,6 +52,7 @@ EXECUTE FUNCTION set_updated_at_trigger();
 -- \c rental_db
 
 CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE EXTENSION IF NOT EXISTS citext;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'r_verification_status_t') THEN
@@ -79,7 +80,7 @@ CREATE TABLE customers (
   -- local link to auth_db.users_auth.user_id (no cross-db FK)
   user_id BIGINT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
-  email TEXT UNIQUE,
+  email citext UNIQUE NOT NULL,
   phone TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -144,7 +145,7 @@ CREATE INDEX IF NOT EXISTS idx_booking_customer ON booking(customer_id);
 -- REVIEW references customers as reviewer
 CREATE TABLE review (
   review_id BIGSERIAL PRIMARY KEY,
-  customer_id BIGINT NOT NULL,
+  customer_id BIGINT NOT NULL REFERENCES customers(customer_id) ON DELETE CASCADE,
   property_id BIGINT NOT NULL REFERENCES property(property_id) ON DELETE CASCADE,
   rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
   review_text TEXT,
@@ -221,8 +222,9 @@ BEGIN
     FROM booking b
     JOIN room r ON r.room_id = b.room_id
     WHERE b.customer_id = NEW.customer_id
-      AND r.property_id = NEW.property_id
-      AND b.booking_status = 'Completed'
+        AND r.property_id = NEW.property_id
+        AND b.booking_status = 'Completed'
+        AND b.end_date <= CURRENT_DATE
   ) THEN
     RAISE EXCEPTION 'Customer % cannot review property % without completed booking', NEW.customer_id, NEW.property_id;
   END IF;
@@ -269,9 +271,9 @@ CREATE TRIGGER trg_customers_updated_at BEFORE UPDATE ON customers FOR EACH ROW 
 -- ==========================================
 -- Indexes and housekeeping
 -- ==========================================
-CREATE INDEX IF NOT EXISTS idx_property_city_verified ON property(city) WHERE verification_status = 'Verified';
 CREATE INDEX IF NOT EXISTS idx_property_owner ON property(owner_id);
 CREATE INDEX IF NOT EXISTS idx_room_property_active ON room(property_id) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_booking_room ON booking(room_id);
 CREATE INDEX IF NOT EXISTS idx_booking_active_room ON booking(room_id) WHERE booking_status = 'Active';
 CREATE INDEX IF NOT EXISTS idx_booking_customer ON booking(customer_id);
 CREATE INDEX IF NOT EXISTS idx_review_property ON review(property_id);
