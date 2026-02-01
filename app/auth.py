@@ -9,9 +9,12 @@ from .core.config import settings
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import select, Session
 from .schemas import LoginRequest, Token
-from .db import get_auth_session
-from .models import UserAuth
+from .schemas import LoginRequest, Token, SignupRequest
+from .db import get_auth_session, get_rental_session
+from .models import UserAuth, Customer, Owner
+from sqlalchemy.exc import IntegrityError
 from .deps import get_current_user
+from sqlmodel import select
 
 
 router = APIRouter()
@@ -24,6 +27,58 @@ def login(form: LoginRequest, session: Session = Depends(get_auth_session)):
     if not user or not verify_password(form.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
 
+    token = create_access_token({"sub": str(user.user_id), "role": user.role})
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@router.post("/signup", response_model=Token, status_code=status.HTTP_201_CREATED)
+def signup(payload: SignupRequest, auth_session: Session = Depends(get_auth_session), rental_session: Session = Depends(get_rental_session)):
+    # Create user in auth DB
+    try:
+        role_val = payload.role.capitalize()
+        if role_val not in ("Admin", "Owner", "User"):
+            raise HTTPException(status_code=400, detail="Invalid role")
+
+        user = UserAuth(
+            email=payload.email,
+            password_hash=get_password_hash(payload.password),
+            role=role_val,
+            verification_status="Pending",
+        )
+        auth_session.add(user)
+        auth_session.commit()
+        auth_session.refresh(user)
+    except IntegrityError as e:
+        auth_session.rollback()
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+    except Exception as e:
+        auth_session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create user")
+
+    # Create customer profile in rental DB; if this fails, try to roll back auth user
+    try:
+        cust = Customer(user_id=user.user_id, full_name=payload.full_name, email=payload.email)
+        rental_session.add(cust)
+        rental_session.commit()
+        rental_session.refresh(cust)
+
+        # If the signup role is Owner, create owner row (verification stays Pending)
+        if role_val == "Owner":
+            owner = Owner(customer_id=cust.customer_id)
+            rental_session.add(owner)
+            rental_session.commit()
+            rental_session.refresh(owner)
+    except Exception as e:
+        rental_session.rollback()
+        # Attempt to remove created auth user to avoid orphan
+        try:
+            auth_session.delete(user)
+            auth_session.commit()
+        except Exception:
+            auth_session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create customer/owner profile; rolled back user creation")
+
+    # Auto-login: create token
     token = create_access_token({"sub": str(user.user_id), "role": user.role})
     return {"access_token": token, "token_type": "bearer"}
 

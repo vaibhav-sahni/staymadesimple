@@ -21,7 +21,7 @@ class Property(SQLModel, table=True):
     city: str
     address: str
     google_maps_link: Optional[str] = None
-    verification_status: Optional[str] = None
+    verification_status: Optional[str] = Field(default="Pending")
     average_rating: Optional[float] = None
 
 
@@ -37,7 +37,7 @@ class Owner(SQLModel, table=True):
     __tablename__ = "owner"
     owner_id: Optional[int] = Field(default=None, primary_key=True)
     customer_id: int
-    verification_status: Optional[str] = None
+    verification_status: Optional[str] = Field(default="Pending")
 
 
 class Room(SQLModel, table=True):

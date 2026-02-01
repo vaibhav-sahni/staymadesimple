@@ -7,6 +7,13 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    role: str
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
