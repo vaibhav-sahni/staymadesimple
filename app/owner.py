@@ -38,9 +38,21 @@ def create_property(
             address=payload.address,
             google_maps_link=payload.google_maps_link,
         )
-        session.add(prop)
-        session.commit()
-        session.refresh(prop)
+        try:
+            if session.in_transaction():
+                session.add(prop)
+                session.flush()
+                # commit explicitly when caller has an open transaction to ensure persistence
+                session.commit()
+                session.refresh(prop)
+            else:
+                with session.begin():
+                    session.add(prop)
+                    session.flush()
+                    session.refresh(prop)
+        except Exception:
+            # let outer handler catch and return 500 with logs
+            raise
         return PropertyRead(
             property_id=prop.property_id,
             owner_id=prop.owner_id,
