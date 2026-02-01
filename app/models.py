@@ -1,5 +1,6 @@
 from typing import Optional
 from sqlmodel import SQLModel, Field
+from datetime import datetime
 
 
 class UserAuth(SQLModel, table=True):
@@ -57,3 +58,13 @@ class Booking(SQLModel, table=True):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     booking_status: Optional[str] = None
+
+
+class Review(SQLModel, table=True):
+    __tablename__ = "review"
+    review_id: Optional[int] = Field(default=None, primary_key=True)
+    property_id: int
+    customer_id: int
+    rating: int
+    review_text: Optional[str] = None
+    review_date: datetime = Field(default_factory=datetime.utcnow)

@@ -5,10 +5,11 @@ from datetime import datetime, date
 
 from .db import get_rental_session
 from .deps import get_current_user
-from .models import Property, Room, Booking
-from .schemas import PropertyRead, BookingCreate, BookingRead, RoomAvailability
+from .models import Property, Room, Booking, Review
+from .schemas import PropertyRead, BookingCreate, BookingRead, RoomAvailability, ReviewCreate, ReviewRead
 from datetime import datetime
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
+from sqlalchemy import text
 import logging
 import traceback
 
@@ -225,4 +226,118 @@ def create_booking_for_property(property_id: int, payload: BookingCreate, curren
     except Exception as exc:
         tb = traceback.format_exc()
         logger.exception("create_booking_for_property failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Internal server error (see server logs)\n{tb}")
+
+
+
+@router.post("/{property_id}/reviews", response_model=List[ReviewRead], status_code=status.HTTP_201_CREATED)
+def create_review_for_property(property_id: int, payload: ReviewCreate, current_user=Depends(get_current_user), session: Session = Depends(get_rental_session)):
+    try:
+        # only customers may post reviews
+        if current_user.role.lower() != 'customer':
+            raise HTTPException(status_code=403, detail="Only customers may post reviews")
+
+        # verify property exists
+        prop = session.get(Property, property_id)
+        if not prop:
+            raise HTTPException(status_code=404, detail="Property not found")
+
+        # get customer profile
+        from .customers import get_customer_by_user
+        cust = get_customer_by_user(session, current_user.user_id)
+        if not cust:
+            raise HTTPException(status_code=404, detail="Customer profile not found in rental DB")
+
+        from datetime import datetime
+
+        # ensure customer actually completed a stay at this property
+        room_stmt = select(Room.room_id).where(Room.property_id == property_id)
+        room_rows = session.exec(room_stmt).all()
+        room_ids = [r for (r,) in room_rows]
+        if not room_ids:
+            raise HTTPException(status_code=403, detail="Only customers who have stayed may leave reviews")
+
+        booking_stmt = select(Booking).where(
+            Booking.customer_id == cust.customer_id,
+            Booking.room_id.in_(room_ids),
+            Booking.booking_status != 'Cancelled',
+            Booking.end_date != None,
+            Booking.end_date <= datetime.utcnow(),
+        ).limit(1)
+        past_booking = session.exec(booking_stmt).first()
+        if not past_booking:
+            raise HTTPException(status_code=403, detail="Only customers who have completed a stay may leave reviews")
+
+        db_review = Review(
+            property_id=property_id,
+            customer_id=cust.customer_id,
+            rating=payload.rating,
+              review_text=payload.review_text if hasattr(payload, 'review_text') else getattr(payload, 'text', None),
+              review_date=datetime.utcnow(),
+        )
+
+        try:
+            with session.begin():
+                session.add(db_review)
+                session.flush()
+
+                # recompute average rating
+                # rating will be updated by DB trigger `update_property_rating`; no manual update required
+                pass
+        except IntegrityError as e:
+            logger.exception("IntegrityError creating review: %s", e)
+            raise HTTPException(status_code=400, detail="Could not create review")
+
+        session.refresh(db_review)
+        return db_review
+    except HTTPException:
+        raise
+    except Exception as exc:
+        tb = traceback.format_exc()
+        logger.exception("create_review_for_property failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Internal server error (see server logs)\n{tb}")
+
+
+@router.get("/{property_id}/reviews", response_model=List[ReviewRead])
+def list_reviews_for_property(property_id: int, limit: int = 50, offset: int = 0, session: Session = Depends(get_rental_session)):
+    try:
+        stmt = select(Review).where(Review.property_id == property_id).offset(offset).limit(limit)
+        rows = session.exec(stmt).all()
+        return rows
+    except Exception as exc:
+        # If the DB schema is missing the `text` column (or similar), fall back to a safe select
+        if isinstance(exc, ProgrammingError) or 'column review.text does not exist' in str(exc):
+            try:
+                q = "SELECT review_id, property_id, customer_id, rating, created_at FROM review WHERE property_id = :pid LIMIT :lim OFFSET :off"
+                res = session.execute(text(q), {'pid': property_id, 'lim': limit, 'off': offset})
+                rows = res.fetchall()
+                results = []
+                for row in rows:
+                    # row may be a tuple-like
+                    if isinstance(row, tuple):
+                        review_id, property_id, customer_id, rating, review_date = row
+                        review_text = None
+                    else:
+                        review_id = getattr(row, 'review_id', None)
+                        property_id = getattr(row, 'property_id', None)
+                        customer_id = getattr(row, 'customer_id', None)
+                        rating = getattr(row, 'rating', None)
+                        review_text = getattr(row, 'review_text', None)
+                        review_date = getattr(row, 'review_date', None)
+                    results.append(schemas.ReviewRead(
+                        review_id=review_id,
+                        property_id=property_id,
+                        customer_id=customer_id,
+                        rating=rating,
+                        review_text=review_text,
+                        review_date=review_date,
+                    ))
+                return results
+            except Exception:
+                tb = traceback.format_exc()
+                logger.exception("list_reviews_for_property fallback failed: %s", exc)
+                raise HTTPException(status_code=500, detail=f"Internal server error (see server logs)\n{tb}")
+
+        tb = traceback.format_exc()
+        logger.exception("list_reviews_for_property failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Internal server error (see server logs)\n{tb}")

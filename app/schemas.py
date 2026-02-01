@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 
 class LoginRequest(BaseModel):
@@ -99,3 +100,17 @@ class RoomAvailability(BaseModel):
     is_booked: bool
     next_available: Optional[str] = None
     availability_text: Optional[str] = None
+
+
+class ReviewCreate(BaseModel):
+    rating: int
+    review_text: Optional[str] = None
+
+
+class ReviewRead(BaseModel):
+    review_id: int
+    property_id: int
+    customer_id: int
+    rating: int
+    review_text: Optional[str] = None
+    review_date: Optional[datetime] = None
