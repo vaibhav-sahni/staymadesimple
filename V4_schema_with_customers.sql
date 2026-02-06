@@ -114,17 +114,7 @@ CREATE TABLE property (
 CREATE INDEX IF NOT EXISTS idx_property_city_verified ON property(city) WHERE verification_status = 'Verified';
 CREATE INDEX IF NOT EXISTS idx_property_owner ON property(owner_id);
 
-CREATE TABLE photo (
-  photo_id BIGSERIAL PRIMARY KEY,
-  property_id INT REFERENCES property(property_id) ON DELETE CASCADE,
-  owner_id INT NULL,
-  storage_key TEXT NOT NULL, -- S3 key or CDN path
-  url TEXT,                 -- optional final URL
-  caption TEXT,
-  is_primary BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-CREATE INDEX idx_photo_property ON photo(property_id);
+
 -- ROOM
 CREATE TABLE room (
   room_id BIGSERIAL PRIMARY KEY,

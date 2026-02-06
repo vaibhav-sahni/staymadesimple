@@ -1,0 +1,8 @@
+npm create vite@latest frontend -- --template react-ts
+cd frontend
+npm install
+npm install axios
+# optional: tailwind
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+npm run dev
