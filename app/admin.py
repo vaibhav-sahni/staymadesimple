@@ -2,10 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from typing import List
 
-from .db import get_rental_session
+from .db import get_rental_session, get_auth_session
 from .deps import require_role
-from .models import Property, Owner
+from .models import Property, Owner, Customer, UserAuth
 from .schemas import PropertyRead
+from .models import Booking, Room
+from sqlmodel import and_, func
+from typing import Optional
+from datetime import date
 import logging, traceback
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -155,21 +159,111 @@ def admin_verify_owner(owner_id: int, status: str = "Verified", session: Session
 
 
 @router.delete("/owners/{owner_id}", status_code=status.HTTP_204_NO_CONTENT)
-def admin_delete_owner(owner_id: int, session: Session = Depends(get_rental_session), current_user=Depends(require_role("Admin"))):
+def admin_delete_owner(
+    owner_id: int,
+    session: Session = Depends(get_rental_session),
+    auth_session: Session = Depends(get_auth_session),
+    current_user=Depends(require_role("Admin")),
+):
     try:
         owner = session.get(Owner, owner_id)
         if not owner:
             raise HTTPException(status_code=404, detail="Owner not found")
+
+        # find linked customer -> user_id so we can remove auth record too
+        cust = session.get(Customer, owner.customer_id)
+        user_id = None
+        if cust:
+            user_id = getattr(cust, "user_id", None)
+
+        # delete owner in rental DB
         try:
             session.delete(owner)
             session.commit()
         except Exception:
             session.rollback()
             raise
+
+        # attempt to delete auth user in auth_db (best-effort)
+        if user_id is not None:
+            try:
+                auth_user = auth_session.get(UserAuth, user_id)
+                if auth_user:
+                    auth_session.delete(auth_user)
+                    auth_session.commit()
+            except Exception:
+                auth_session.rollback()
+                # log and raise so calling client sees failure to remove auth record
+                tb = traceback.format_exc()
+                logger.exception("failed to delete auth user %s: %s", user_id, tb)
+                raise HTTPException(status_code=500, detail=f"Failed to delete linked auth user: {tb}")
+
         return None
     except HTTPException:
         raise
     except Exception as exc:
         tb = traceback.format_exc()
         logger.exception("admin_delete_owner failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Internal server error\n{tb}")
+
+
+@router.get("/bookings")
+def admin_list_bookings(
+    property_id: Optional[int] = None,
+    owner_id: Optional[int] = None,
+    customer_id: Optional[int] = None,
+    start_date_from: Optional[date] = None,
+    start_date_to: Optional[date] = None,
+    end_date_from: Optional[date] = None,
+    end_date_to: Optional[date] = None,
+    session: Session = Depends(get_rental_session),
+    current_user=Depends(require_role("Admin")),
+):
+    """Return bookings with optional filters by property, owner, customer, and date ranges."""
+    try:
+        q = select(Booking, Room.property_id).join(Room, Booking.room_id == Room.room_id)
+        # apply filters
+        conditions = []
+        if property_id is not None:
+            conditions.append(Room.property_id == property_id)
+        if owner_id is not None:
+            # join to property via Room.property_id -> Property.property_id and filter owner
+            from .models import Property as _Property
+
+            q = q.join(_Property, Room.property_id == _Property.property_id)
+            conditions.append(_Property.owner_id == owner_id)
+        if customer_id is not None:
+            conditions.append(Booking.customer_id == customer_id)
+        if start_date_from is not None:
+            conditions.append(Booking.start_date >= start_date_from.isoformat())
+        if start_date_to is not None:
+            conditions.append(Booking.start_date <= start_date_to.isoformat())
+        if end_date_from is not None:
+            conditions.append(Booking.end_date >= end_date_from.isoformat())
+        if end_date_to is not None:
+            conditions.append(Booking.end_date <= end_date_to.isoformat())
+
+        if conditions:
+            q = q.where(and_(*conditions))
+
+        rows = session.exec(q).all()
+
+        # rows are tuples (Booking, property_id) due to select(Booking, Room.property_id)
+        results = []
+        for row in rows:
+            booking = row[0]
+            prop_id = row[1]
+            results.append({
+                "booking_id": booking.booking_id,
+                "customer_id": booking.customer_id,
+                "room_id": booking.room_id,
+                "property_id": prop_id,
+                "start_date": booking.start_date,
+                "end_date": booking.end_date,
+                "booking_status": booking.booking_status,
+            })
+        return results
+    except Exception as exc:
+        tb = traceback.format_exc()
+        logger.exception("admin_list_bookings failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Internal server error\n{tb}")
