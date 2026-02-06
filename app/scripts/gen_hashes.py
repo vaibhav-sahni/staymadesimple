@@ -17,3 +17,4 @@ if __name__ == '__main__':
     print('ALICE|' + gen('alicepass'))
     print('OWNER|' + gen('ownerpass'))
     print('BOB|' + gen('bobpass'))
+    print('ADMIN|' + gen('adminpass'))

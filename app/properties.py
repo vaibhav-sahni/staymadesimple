@@ -28,6 +28,8 @@ def list_properties(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     available: Optional[bool] = None,  # current-day availability using room.is_booked
+    available_from: Optional[date] = None,
+    available_to: Optional[date] = None,
     sort: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
@@ -77,6 +79,28 @@ def list_properties(
         elif available is False:
             avail_sub = select(Room).where(Room.property_id == Property.property_id, Room.is_active == True, Room.is_booked == True)
             stmt = stmt.where(avail_sub.exists())
+
+        # date-range availability: require at least one room without overlapping ACTIVE booking in the requested range
+        if available_from is not None or available_to is not None:
+            if available_from is None or available_to is None:
+                raise HTTPException(status_code=400, detail="Both available_from and available_to must be provided for date-range availability")
+            if available_from > available_to:
+                raise HTTPException(status_code=400, detail="available_from must be <= available_to")
+
+            # Use correlated NOT EXISTS against booking daterange overlap (server-side)
+            date_filter_sql = text("""
+            EXISTS (
+              SELECT 1 FROM room r
+              WHERE r.property_id = property.property_id AND r.is_active = true
+                AND NOT EXISTS (
+                  SELECT 1 FROM booking b
+                  WHERE b.room_id = r.room_id
+                    AND b.booking_status = 'Active'
+                    AND daterange(b.start_date, b.end_date, '[)') && daterange(:avail_from, :avail_to, '[)')
+                )
+            )
+            """)
+            stmt = stmt.where(date_filter_sql.params(avail_from=available_from.isoformat(), avail_to=available_to.isoformat()))
 
         # safe sorting
         sort_map = {
