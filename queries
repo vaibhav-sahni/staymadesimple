@@ -1,0 +1,6 @@
+#LIST OF CUSTOMERS AND THEIR BOOKING COUNT
+select c.customer_id, COUNT(b.booking_id) as booking_count from customers c left join booking b on c.customer_id = b.customer_id group by c.customer_id order by booking_count desc;
+#LIST OF ROOMS AND THEIR BOOKING COUNT
+select r.room_id, count(b.booking_id) from room r left join booking b on r.room_id=b.room_id group by r.room_id;
+#ROOMS WITH THE HIGHEST NUMBER OF BOOKINGS
+select r.room_id, count(b.booking_id) from room r left join booking b on r.room_id=b.room_id group by r.room_id having count(b.booking_id) =(select max(cnt) from (select count(booking_id) as cnt from booking group by room_id));
