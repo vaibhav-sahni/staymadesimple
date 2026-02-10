@@ -59,18 +59,22 @@ def list_properties(
             stmt = stmt.where(Property.property_type == property_type)
 
         if min_rating is not None:
-            stmt = stmt.where(Property.average_rating >= min_rating)
+            # Treat min_rating == 0 as "include unrated properties" as well
+            if float(min_rating) == 0.0:
+                stmt = stmt.where(or_(Property.average_rating >= 0, Property.average_rating == None))
+            else:
+                stmt = stmt.where(Property.average_rating >= min_rating)
         if max_rating is not None:
             stmt = stmt.where(Property.average_rating <= max_rating)
 
         # price filtering: correlated EXISTS — require at least one active room within price range
+        # price filtering: interpret min_price/max_price as average rent per property
         if min_price is not None or max_price is not None:
-            room_sub = select(Room).where(Room.property_id == Property.property_id, Room.is_active == True)
+            avg_rent_sub = select(func.avg(Room.rent_per_month)).where(Room.property_id == Property.property_id, Room.is_active == True).scalar_subquery()
             if min_price is not None:
-                room_sub = room_sub.where(Room.rent_per_month >= min_price)
+                stmt = stmt.where(avg_rent_sub >= min_price)
             if max_price is not None:
-                room_sub = room_sub.where(Room.rent_per_month <= max_price)
-            stmt = stmt.where(room_sub.exists())
+                stmt = stmt.where(avg_rent_sub <= max_price)
 
         # availability (best-effort current-day using cached `room.is_booked`) using correlated EXISTS
         if available is True:
@@ -125,6 +129,7 @@ def list_properties(
             google_maps_link=p.google_maps_link,
             verification_status=p.verification_status,
             average_rating=p.average_rating,
+            average_rent=None,
             is_full=False,
         ) for p in props]
         # compute occupancy and availability per property
@@ -190,6 +195,13 @@ def list_properties(
                 else:
                     results[idx].next_available = None
                     results[idx].availability_text = "Fully booked"
+
+            # compute average rent per property (active rooms)
+            try:
+                avg_r = session.exec(select(func.avg(Room.rent_per_month)).where(Room.property_id == p.property_id, Room.is_active == True)).first()
+                results[idx].average_rent = float(avg_r) if avg_r is not None else None
+            except Exception:
+                results[idx].average_rent = None
 
         return results
     except Exception as exc:

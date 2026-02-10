@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   AppBar,
   Box,
@@ -14,6 +14,9 @@ import {
   Toolbar,
   Typography,
   Button,
+  Grid,
+  Card,
+  CardContent,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -21,14 +24,61 @@ import HomeIcon from '@mui/icons-material/Home'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import BusinessIcon from '@mui/icons-material/Business'
 import PeopleIcon from '@mui/icons-material/People'
+// removed revenue stat icon
+import Inventory2Icon from '@mui/icons-material/Inventory2'
+import EventNoteIcon from '@mui/icons-material/EventNote'
+import StatCard from './StatCard'
+import { getMyProperties, getActiveBookingsForProperty, getActiveBookingsForOwner, getMyBookings } from '../api'
+import PropertiesPage from '../pages/dashboard/PropertiesPage'
+import BookingsPage from '../pages/dashboard/BookingsPage'
+import UsersPage from '../pages/dashboard/UsersPage'
 
 type User = { user_id: number; email: string; role: string }
 
 export default function DashboardLayout({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [selected, setSelected] = useState<string>('overview')
+  const [propsCount, setPropsCount] = useState<number | null>(null)
+  const [activeBookingsCount, setActiveBookingsCount] = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen)
+
+  useEffect(() => {
+    let mounted = true
+    async function loadMetrics() {
+      setLoading(true)
+      try {
+        if (user.role === 'Owner') {
+          const props: any[] = await getMyProperties()
+          if (!mounted) return
+          setPropsCount(props.length)
+          // fetch active bookings from backend (owner-level)
+          try {
+            const bookings: any[] = await getActiveBookingsForOwner()
+            if (!mounted) return
+            setActiveBookingsCount(Array.isArray(bookings) ? bookings.length : 0)
+          } catch (e) {
+            // fallback to per-property fetch if backend endpoint missing
+            const bookingsArrays = await Promise.all(props.map((p) => getActiveBookingsForProperty(p.property_id)))
+            if (!mounted) return
+            const totalActive = bookingsArrays.reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0)
+            setActiveBookingsCount(totalActive)
+          }
+        } else {
+          // for non-owners, we could fetch global counts or user-specific data
+          setPropsCount(0)
+          setActiveBookingsCount(0)
+        }
+      } catch (err) {
+        console.error('Failed to load dashboard metrics', err)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    loadMetrics()
+    return () => { mounted = false }
+  }, [user])
 
   const commonItems = [
     { id: 'overview', label: 'Overview', icon: <DashboardIcon /> },
@@ -97,16 +147,64 @@ export default function DashboardLayout({ user, onLogout }: { user: User; onLogo
         </Drawer>
       </Box>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+      <Box component="main" sx={{ flexGrow: 1, p: 3, minHeight: '100vh', bgcolor: 'background.default' }}>
         <Toolbar />
-        {selected === 'overview' && <Typography>Overview content for {user.email}</Typography>}
-        {selected === 'profile' && <Typography>Profile: {JSON.stringify(user)}</Typography>}
-        {selected === 'users' && <Typography>Admin: manage users</Typography>}
-        {selected === 'bookings' && <Typography>Bookings list</Typography>}
-        {selected === 'properties' && <Typography>Owner: properties list</Typography>}
-        {selected === 'explore' && <Typography>Explore available properties</Typography>}
-        {selected === 'mybookings' && <Typography>Your bookings</Typography>}
-        {selected === 'users' && <Typography>Users management</Typography>}
+
+        {selected === 'overview' && (
+          <>
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <StatCard title="Active listings" value={propsCount ?? '—'} subtitle="Your published properties" icon={<Inventory2Icon />} />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <StatCard title="Active bookings" value={activeBookingsCount ?? '—'} subtitle="Currently active" icon={<EventNoteIcon />} />
+              </Grid>
+            </Grid>
+
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={8}>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="h6">Recent activity</Typography>
+                    <Typography color="text.secondary" sx={{ mt: 1 }}>
+                      Recent bookings and messages will appear here.
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="h6">Quick actions</Typography>
+                    <Box sx={{ mt: 2, display: 'grid', gap: 1 }}>
+                      <Button variant="contained">Create Property</Button>
+                      <Button variant="outlined">View Bookings</Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          </>
+        )}
+
+        {selected === 'profile' && (
+          <>
+            <Typography variant="h6">Profile</Typography>
+            <Typography color="text.secondary" sx={{ mt: 1 }}>{JSON.stringify(user)}</Typography>
+          </>
+        )}
+
+        {selected === 'users' && <UsersPage />}
+        {selected === 'bookings' && <BookingsPage role={user.role} />}
+        {selected === 'properties' && <PropertiesPage />}
+        {selected === 'explore' && (
+          <>
+            <Typography variant="h6">Explore</Typography>
+            <Typography color="text.secondary" sx={{ mt: 1 }}>Browse available properties and listings.</Typography>
+          </>
+        )}
+        {selected === 'mybookings' && <BookingsPage role={user.role} />}
       </Box>
     </Box>
   )

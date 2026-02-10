@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from .db import get_rental_session
 from .models import Property, UserAuth, Room, Booking
+from sqlalchemy import func
 from .schemas import PropertyCreate, PropertyRead, BookingRead, RoomCreate, RoomRead, RoomAvailability
 from datetime import datetime, date
 from .deps import require_role, get_current_user
@@ -89,6 +90,7 @@ def create_property(
             google_maps_link=prop.google_maps_link,
             verification_status=prop.verification_status,
             average_rating=prop.average_rating,
+            average_rent=(float(payload.rent_per_month) if getattr(payload, 'rent_per_month', None) is not None else None),
         )
     except Exception as exc:
         tb = traceback.format_exc()
@@ -575,11 +577,19 @@ def list_my_properties(
                 google_maps_link=p.google_maps_link,
                 verification_status=p.verification_status,
                 average_rating=p.average_rating,
+                average_rent=None,
                 is_full=is_full,
                 rooms_available=rooms_available,
                 next_available=next_available,
                 availability_text=availability_text,
             ))
+        # compute average rent per property for owner's properties
+        for i, p in enumerate(props):
+            try:
+                avg_r = session.exec(select(func.avg(Room.rent_per_month)).where(Room.property_id == p.property_id, Room.is_active == True)).first()
+                results[i].average_rent = float(avg_r) if avg_r is not None else None
+            except Exception:
+                results[i].average_rent = None
         return results
     except Exception as exc:
         tb = traceback.format_exc()
