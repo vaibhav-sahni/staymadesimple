@@ -7,17 +7,17 @@ import { useAuth } from '../context/AuthContext';
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = (e: FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-    if (email === 'basantiapramag@gmail.com') {
-      login(email);
+    try {
+      await login(email, password);
       navigate('/dashboard');
-    } else {
-      // Handle other logins or show error
-      alert('Please use the demo email: basantiapramag@gmail.com');
+    } catch (err) {
+      alert('Login failed: ' + (err instanceof Error ? err.message : 'unknown'));
     }
   };
 
@@ -79,6 +79,8 @@ export default function Login() {
                   <input 
                     type={showPassword ? "text" : "password"} 
                     placeholder="Enter your password" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-bone/30 border border-charcoal/10 rounded-xl py-3 pl-10 pr-10 text-sm text-charcoal placeholder:text-charcoal/30 outline-none focus:border-charcoal/30 focus:bg-bone/50 transition-all"
                   />
                   <button 

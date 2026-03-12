@@ -1,14 +1,16 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { apiFetch } from '../lib/api';
 
 interface User {
-  fullName: string;
-  email: string;
-  verificationStatus: 'Verified' | 'Unverified';
+  fullName?: string;
+  email?: string;
+  role?: string;
+  verificationStatus?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string) => void;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   showWelcome: boolean;
   setShowWelcome: (show: boolean) => void;
@@ -20,22 +22,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  const login = (email: string) => {
-    // Mock login logic
-    if (email === 'basantiapramag@gmail.com') {
-      const mockUser: User = {
-        fullName: 'Basantia Pramag', // Inferring name from email for now, or could be hardcoded
-        email: email,
-        verificationStatus: 'Verified'
-      };
-      setUser(mockUser);
-      setShowWelcome(true);
-      
-      // Hide welcome screen after 3 seconds
-      setTimeout(() => {
-        setShowWelcome(false);
-      }, 3000);
-    }
+  // On init, try to restore token and fetch /me
+  useEffect(() => {
+    const token = localStorage.getItem('sms_token');
+    if (!token) return;
+    (async () => {
+      try {
+        const me = await apiFetch('/me');
+        setUser({ fullName: (me as any).full_name || '', email: (me as any).email || (me as any).email });
+      } catch {
+        // token invalid or /me failed
+        localStorage.removeItem('sms_token');
+        setUser(null);
+      }
+    })();
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    const res: any = await apiFetch('/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    const token = res?.access_token;
+    if (!token) throw new Error('No token returned');
+    localStorage.setItem('sms_token', token);
+    // fetch profile
+    const me = await apiFetch('/me');
+    setUser({ fullName: (me as any).full_name || '', email: (me as any).email, role: (me as any).role });
+    setShowWelcome(true);
+    setTimeout(() => setShowWelcome(false), 3000);
   };
 
   const logout = () => {

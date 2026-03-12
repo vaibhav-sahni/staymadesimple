@@ -2,69 +2,48 @@ import SearchPill from '@/components/SearchPill';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { Filter, ArrowUp, ArrowDown, Star, Calendar, CheckCircle } from 'lucide-react';
 
-const properties = [
-  {
-    id: 1,
-    title: "The Kensington Suite",
-    location: "Indiranagar, Bangalore",
-    price: 35000,
-    image: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?q=80&w=2080&auto=format&fit=crop",
-    type: "Serviced Apartment",
-    rating: 4.9
-  },
-  {
-    id: 2,
-    title: "Urban Heights",
-    location: "Koramangala, Bangalore",
-    price: 18000,
-    image: "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?q=80&w=2070&auto=format&fit=crop",
-    type: "Premium PG",
-    rating: 4.7
-  },
-  {
-    id: 3,
-    title: "Azure Living",
-    location: "Whitefield, Bangalore",
-    price: 22000,
-    image: "https://images.unsplash.com/photo-1595526114035-0d45ed16cfbf?q=80&w=2070&auto=format&fit=crop",
-    type: "Co-living",
-    rating: 4.8
-  },
-  {
-    id: 4,
-    title: "The Minimalist",
-    location: "HSR Layout, Bangalore",
-    price: 28000,
-    image: "https://images.unsplash.com/photo-1493809842364-78817add7ffb?q=80&w=2070&auto=format&fit=crop",
-    type: "Studio",
-    rating: 4.9
-  },
-  {
-    id: 5,
-    title: "Garden View Residency",
-    location: "Jayanagar, Bangalore",
-    price: 15000,
-    image: "https://images.unsplash.com/photo-1524758631624-e2822e304c36?q=80&w=2070&auto=format&fit=crop",
-    type: "Girls PG",
-    rating: 4.6
-  },
-  {
-    id: 6,
-    title: "Tech Park Haven",
-    location: "Electronic City, Bangalore",
-    price: 20000,
-    image: "https://images.unsplash.com/photo-1617104424032-b9bd6972d0e4?q=80&w=2070&auto=format&fit=crop",
-    type: "Boys PG",
-    rating: 4.5
-  }
+// Local sample images placed in public/images
+const localImages = [
+  '/images/unsplash1.jpg',
+  '/images/unsplash2.jpg',
+  '/images/unsplash3.jpg',
+  '/images/unsplash4.jpg',
+  '/images/unsplash5.jpg',
 ];
+
+// Hotlink Unsplash IDs provided earlier (used only as final fallback)
+const unsplashIds = ['nmKPgfIUYtM', 'umAXneH4GhA', 'hlOpCML8twI'];
+
+function getPlaceholderImage(id?: number) {
+  if (!id) return localImages[0];
+  // deterministic distribution across local images so properties don't all show same image
+  const idx = (Math.abs(id - 1)) % localImages.length;
+  return localImages[idx];
+}
+
+// frontend representation mapped from backend `PropertyRead`
+type FrontProp = {
+  id: number;
+  title: string;
+  location: string;
+  price: number | null;
+  image: string | null;
+  type?: string | null;
+  rating: number | null;
+};
+
+const initialProps: FrontProp[] = [];
 
 export default function Search() {
   const [searchParams] = useSearchParams();
   const [isReset, setIsReset] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [properties, setProperties] = useState<FrontProp[]>(initialProps);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
@@ -81,6 +60,33 @@ export default function Search() {
       handleReset();
     }
   }, [searchParams]);
+
+  // fetch properties from backend
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    setError(null);
+    apiFetch('/properties')
+      .then((rows: any[]) => {
+        if (!mounted) return;
+        const mapped = (rows || []).map((p: any) => ({
+          id: p.property_id,
+          title: p.property_description || 'Untitled Property',
+          location: p.city || p.address || '',
+          price: p.average_rent ?? null,
+          // backend may expose image_url or images array; fall back to google_maps_link or placeholder
+          image: p.image_url || (p.images && p.images.length ? p.images[0] : (p.google_maps_link || getPlaceholderImage(p.property_id))),
+          type: p.property_type || null,
+          rating: p.average_rating ?? null,
+        }));
+        setProperties(mapped);
+      })
+      .catch((e) => {
+        setError(e?.message || 'Failed to load properties');
+      })
+      .finally(() => setLoading(false));
+    return () => { mounted = false; };
+  }, []);
 
   const handleReset = () => {
     setIsReset(true);
@@ -255,7 +261,9 @@ export default function Search() {
         </div>
 
         <div key={resetKey} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredProperties.map((property, index) => (
+          {loading && <div className="col-span-full text-center py-12">Loading properties…</div>}
+          {error && <div className="col-span-full text-center text-red-600 py-12">{error}</div>}
+          {!loading && !error && filteredProperties.map((property, index) => (
             <motion.div
               key={property.id}
               initial={{ opacity: 0, y: 30 }}
@@ -265,9 +273,28 @@ export default function Search() {
             >
               <Link to={`/property/${property.id}`} className="group block">
                 <div className="relative aspect-[4/3] overflow-hidden rounded-2xl mb-4">
-                  <img 
-                    src={property.image} 
-                    alt={property.title} 
+                  <img
+                    src={property.image || getPlaceholderImage(property.id)}
+                    alt={property.title}
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      const src = el.src || '';
+                      // detect current local unsplashN and advance to next local image
+                      const m = src.match(/unsplash(\d+)\.jpg$/);
+                      if (m) {
+                        const num = Number(m[1]);
+                        if (num >= 1 && num < localImages.length) {
+                          el.src = `/images/unsplash${num + 1}.jpg`;
+                          return;
+                        }
+                        // exhausted local images -> fallback to hotlink
+                        const idx = property.id ? ((property.id - 1) % unsplashIds.length) : 0;
+                        el.src = `https://source.unsplash.com/${unsplashIds[idx]}/1600x900`;
+                        return;
+                      }
+                      // initial failure or non-local src: start with first local image
+                      el.src = localImages[0];
+                    }}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                   />
                   <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
@@ -280,8 +307,8 @@ export default function Search() {
                     <p className="text-xs text-charcoal/60 font-sans mt-1">{property.location}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-sans font-medium text-charcoal">₹{property.price.toLocaleString()}<span className="text-charcoal/40 text-[10px] font-normal">/mo</span></p>
-                    <p className="text-[10px] text-charcoal/60 mt-1">★ {property.rating}</p>
+                    <p className="font-sans font-medium text-charcoal">₹{(property.price ?? 0).toLocaleString()}<span className="text-charcoal/40 text-[10px] font-normal">/mo</span></p>
+                    <p className="text-[10px] text-charcoal/60 mt-1">★ {property.rating ?? '—'}</p>
                   </div>
                 </div>
               </Link>

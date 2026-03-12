@@ -6,46 +6,49 @@ import {
   Maximize2, Mail, Phone
 } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 
-// Mock data for the specific property
-const propertyDetails = {
-  id: 1,
-  title: "The Kensington Suite",
-  location: "Indiranagar, Bangalore",
-  type: "Serviced Apartment",
-  price: "₹35,000",
-  rating: 4.9,
-  description: "Welcome to your potential new home! This lovely home features with 4 bedrooms and 4 bathrooms, making it ideal for your family's needs. With a generous 1,500m² square footage, there's plenty of space for relaxation and entertaining. You'll appreciate the modern amenities, such as smart home system, gym, pool, and backyard. Situated in the sought-after Indiranagar neighborhood, you'll enjoy easy access to local shops, dining, and parks.",
-  specs: {
-    bedrooms: 4,
-    bathrooms: 4,
-    area: "1,500m²",
-    parking: "Garage",
-    pool: "Private Pool"
-  },
-  facilities: [
-    { icon: Wifi, label: "Free WiFi" },
-    { icon: Monitor, label: "Smart TV" },
-    { icon: Thermometer, label: "AC & Heating" },
-    { icon: Car, label: "Free Parking" },
-    { icon: Shield, label: "24/7 Security" },
-    { icon: Sparkles, label: "Housekeeping" },
-    { icon: Coffee, label: "Coffee Machine" },
-    { icon: Dumbbell, label: "Gym Access" }
-  ],
-  images: [
-    "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?q=80&w=2080&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?q=80&w=2070&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1554995207-c18c203602cb?q=80&w=2070&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1595526114035-0d45ed16cfbf?q=80&w=2070&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1493809842364-78817add7ffb?q=80&w=2070&auto=format&fit=crop"
-  ],
-  agent: {
-    name: "Sarah Jenkins",
-    role: "Senior Property Manager",
-    image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=1888&auto=format&fit=crop"
-  }
+type RoomOut = {
+  room_id: number;
+  property_id: number;
+  room_number: string;
+  rent_per_month: number;
+  is_active: boolean;
+  is_booked: boolean;
+  next_available?: string | null;
+  availability_text?: string | null;
 };
+
+type ReviewOut = {
+  review_id: number;
+  property_id: number;
+  customer_id: number;
+  rating: number;
+  review_text?: string | null;
+  review_date?: string | null;
+  reviewer_name?: string | null;
+};
+
+type PropertyDetailModel = {
+  property_id: number;
+  owner_id: number;
+  property_description: string;
+  room_description?: string | null;
+  property_type?: string | null;
+  city?: string | null;
+  address?: string | null;
+  google_maps_link?: string | null;
+  verification_status?: string | null;
+  average_rating?: number | null;
+  is_full?: boolean;
+  rooms_available?: number;
+  next_available?: string | null;
+  availability_text?: string | null;
+  rooms?: RoomOut[] | null;
+  reviews?: ReviewOut[] | null;
+};
+
 
 // Mock data for recommendations
 const recommendations = [
@@ -108,11 +111,40 @@ const reviews = [
 
 export default function PropertyDetail() {
   const { id } = useParams();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<PropertyDetailModel | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    setError(null);
+    apiFetch(`/properties/${id}`)
+      .then((res) => setData(res))
+      .catch((e) => setError(e?.message || 'Failed to load property'))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <div className="pt-32 text-center">Loading property…</div>;
+  if (error) return <div className="pt-32 text-center text-red-600">{error}</div>;
+  if (!data) return <div className="pt-32 text-center">Property not found</div>;
+
+  // Local sample images
+  const localImages = ['/images/unsplash1.jpg','/images/unsplash2.jpg','/images/unsplash3.jpg','/images/unsplash4.jpg','/images/unsplash5.jpg'];
+  // Unsplash hotlink fallbacks (user-provided IDs)
+  const unsplashIds = ['nmKPgfIUYtM', 'umAXneH4GhA', 'hlOpCML8twI'];
+  const pickLocal = (seed?: number) => {
+    if (!seed) return localImages[0];
+    const idx = (Math.abs(seed - 1)) % localImages.length;
+    return localImages[idx];
+  };
+
+  const mainImage = data.image_url || data.google_maps_link || pickLocal(data.property_id);
 
   return (
     <div className="pt-32 pb-20 px-4 md:px-12 min-h-screen bg-bone">
       <div className="max-w-7xl mx-auto">
-        
+
         {/* Gallery Section */}
         <div className="grid grid-cols-4 grid-rows-2 gap-4 h-[500px] mb-12 rounded-3xl overflow-hidden">
           <motion.div 
@@ -121,10 +153,30 @@ export default function PropertyDetail() {
             transition={{ duration: 0.8 }}
             className="col-span-4 md:col-span-2 row-span-2 relative group"
           >
-            <img src={propertyDetails.images[0]} className="w-full h-full object-cover" alt="Main" />
+            <img
+              src={mainImage}
+              className="w-full h-full object-cover"
+              alt="Main"
+              onError={(e) => {
+                const el = e.currentTarget as HTMLImageElement;
+                const src = el.src || '';
+                const m = src.match(/unsplash(\d+)\.jpg$/);
+                if (m) {
+                  const num = Number(m[1]);
+                  if (num >= 1 && num < localImages.length) {
+                    el.src = `/images/unsplash${num + 1}.jpg`;
+                    return;
+                  }
+                  const idx = data.property_id ? ((data.property_id - 1) % unsplashIds.length) : 0;
+                  el.src = `https://source.unsplash.com/${unsplashIds[idx]}/1600x900`;
+                  return;
+                }
+                el.src = localImages[0];
+              }}
+            />
             <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors duration-500" />
           </motion.div>
-          {propertyDetails.images.slice(1, 4).map((img, i) => (
+          {Array.from({ length: 3 }).map((_, i) => (
             <motion.div 
               key={i}
               initial={{ opacity: 0, scale: 0.95 }}
@@ -132,7 +184,27 @@ export default function PropertyDetail() {
               transition={{ duration: 0.8, delay: 0.1 * (i + 1) }}
               className="col-span-2 md:col-span-1 row-span-1 relative group"
             >
-              <img src={img} className="w-full h-full object-cover" alt={`Detail ${i+1}`} />
+              <img
+                src={mainImage}
+                className="w-full h-full object-cover"
+                alt={`Detail ${i+1}`}
+                onError={(e) => {
+                  const el = e.currentTarget as HTMLImageElement;
+                  const src = el.src || '';
+                  const m = src.match(/unsplash(\d+)\.jpg$/);
+                  if (m) {
+                    const num = Number(m[1]);
+                    if (num >= 1 && num < localImages.length) {
+                      el.src = `/images/unsplash${num + 1}.jpg`;
+                      return;
+                    }
+                    const idx = data.property_id ? ((data.property_id - 1) % unsplashIds.length) : 0;
+                    el.src = `https://source.unsplash.com/${unsplashIds[idx]}/1600x900`;
+                    return;
+                  }
+                  el.src = localImages[0];
+                }}
+              />
               <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors duration-500" />
             </motion.div>
           ))}
@@ -142,7 +214,20 @@ export default function PropertyDetail() {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="col-span-2 md:col-span-1 row-span-1 relative group cursor-pointer"
           >
-            <img src={propertyDetails.images[4]} className="w-full h-full object-cover" alt="Detail 4" />
+            <img
+              src={mainImage}
+              className="w-full h-full object-cover"
+              alt="Detail 4"
+              onError={(e) => {
+                const el = e.currentTarget as HTMLImageElement;
+                const src = el.src || '';
+                const idx = data.property_id ? ((data.property_id - 1) % unsplashIds.length) : 0;
+                if (src.endsWith('/unsplash1.jpg')) { el.src = '/images/unsplash2.jpg'; return; }
+                if (src.endsWith('/unsplash2.jpg')) { el.src = '/images/unsplash3.jpg'; return; }
+                if (src.endsWith('/unsplash3.jpg')) { el.src = `https://source.unsplash.com/${unsplashIds[idx]}/1600x900`; return; }
+                el.src = '/images/unsplash1.jpg';
+              }}
+            />
             <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors flex items-center justify-center">
               <button className="bg-white/20 backdrop-blur-md border border-white/30 text-white px-6 py-3 rounded-full text-xs uppercase tracking-widest font-bold flex items-center gap-2 hover:bg-white hover:text-charcoal transition-all">
                 <Maximize2 className="w-4 h-4" />
@@ -153,17 +238,17 @@ export default function PropertyDetail() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-          
+
           {/* Left Column: Details */}
           <div className="lg:col-span-2 space-y-12">
             
             {/* Title & Actions */}
             <div className="flex justify-between items-start">
               <div>
-                <h1 className="font-serif text-3xl md:text-5xl text-charcoal mb-2">{propertyDetails.title}</h1>
+                <h1 className="font-serif text-3xl md:text-5xl text-charcoal mb-2">{data.property_description}</h1>
                 <p className="font-sans text-charcoal/60 flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-charcoal/40" />
-                  {propertyDetails.location}
+                  {data.city || data.address}
                 </p>
               </div>
               <div className="flex gap-3">
@@ -176,84 +261,29 @@ export default function PropertyDetail() {
               </div>
             </div>
 
-            {/* Specs Bar */}
-            <div className="flex flex-wrap gap-8 py-8 border-y border-charcoal/10">
-              <div className="flex items-center gap-3">
-                <Bed className="w-5 h-5 text-charcoal/40" />
-                <div>
-                  <span className="block text-sm font-bold text-charcoal">{propertyDetails.specs.bedrooms} Bedrooms</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Bath className="w-5 h-5 text-charcoal/40" />
-                <div>
-                  <span className="block text-sm font-bold text-charcoal">{propertyDetails.specs.bathrooms} Bathrooms</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Square className="w-5 h-5 text-charcoal/40" />
-                <div>
-                  <span className="block text-sm font-bold text-charcoal">{propertyDetails.specs.area}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Car className="w-5 h-5 text-charcoal/40" />
-                <div>
-                  <span className="block text-sm font-bold text-charcoal">{propertyDetails.specs.parking}</span>
-                </div>
-              </div>
-            </div>
-
             {/* Description */}
             <div className="prose prose-lg text-charcoal/80 font-sans max-w-none">
               <h3 className="font-serif text-2xl text-charcoal mb-4">Description</h3>
-              <p className="leading-relaxed">
-                {propertyDetails.description}
-              </p>
-              <button className="text-gold font-bold text-sm uppercase tracking-wider mt-2 hover:underline">
-                Read More
-              </button>
+              <p className="leading-relaxed">{data.room_description}</p>
             </div>
 
-            {/* Facilities */}
+            {/* Rooms */}
             <div>
-              <h3 className="font-serif text-2xl text-charcoal mb-6">Facilities</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {propertyDetails.facilities.map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 p-4 bg-white rounded-xl shadow-sm border border-charcoal/5">
-                    <item.icon className="w-5 h-5 text-gold" />
-                    <span className="text-sm font-medium text-charcoal">{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Location Map */}
-            <div>
-              <h3 className="font-serif text-2xl text-charcoal mb-6">Location</h3>
-              <div className="w-full h-[400px] rounded-3xl overflow-hidden relative bg-charcoal/5">
-                {/* Placeholder Map Image - In a real app, use Google Maps API */}
-                <img 
-                  src="https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=2074&auto=format&fit=crop" 
-                  alt="Map Location" 
-                  className="w-full h-full object-cover opacity-80"
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="bg-white p-4 rounded-2xl shadow-xl flex items-center gap-3 animate-bounce">
-                    <div className="w-12 h-12 rounded-xl overflow-hidden">
-                      <img src={propertyDetails.images[0]} className="w-full h-full object-cover" alt="Thumbnail" />
-                    </div>
+              <h3 className="font-serif text-2xl text-charcoal mb-6">Rooms</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {data.rooms && data.rooms.length ? data.rooms.map((r) => (
+                  <div key={r.room_id} className="p-4 bg-white rounded-xl border border-charcoal/5 flex justify-between items-center">
                     <div>
-                      <p className="text-xs font-bold text-charcoal">{propertyDetails.title}</p>
-                      <p className="text-[10px] text-charcoal/60">{propertyDetails.location}</p>
+                      <div className="text-sm font-bold text-charcoal">{r.room_number || `Room ${r.room_id}`}</div>
+                      <div className="text-xs text-charcoal/60">₹{(r.rent_per_month ?? 0).toLocaleString()}/mo</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-charcoal/60">{r.is_booked ? 'Booked' : 'Available'}</div>
+                      {r.next_available && <div className="text-[10px] text-charcoal/50">{r.next_available}</div>}
                     </div>
                   </div>
-                </div>
+                )) : <div className="text-charcoal/60">No rooms</div>}
               </div>
-              <p className="mt-4 text-sm text-charcoal/60 flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                {propertyDetails.location}, India
-              </p>
             </div>
 
           </div>
@@ -265,38 +295,15 @@ export default function PropertyDetail() {
               {/* Price Card */}
               <div className="bg-white rounded-3xl p-8 shadow-xl shadow-charcoal/5 border border-charcoal/5">
                 <div className="mb-6">
-                  <span className="text-charcoal/60 text-sm block mb-1">Price</span>
+                  <span className="text-charcoal/60 text-sm block mb-1">Availability</span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-serif text-charcoal">{propertyDetails.price}</span>
+                    <span className="text-2xl font-serif text-charcoal">{data.availability_text || (data.rooms_available ? `${data.rooms_available} rooms` : '—')}</span>
                   </div>
                 </div>
 
                 <button className="w-full border border-charcoal text-charcoal py-4 rounded-xl font-sans text-xs uppercase tracking-widest font-bold hover:bg-charcoal/5 transition-colors mb-3">
-                  Try Mortgage Scheme
+                  Contact Owner
                 </button>
-              </div>
-
-              {/* Agent Card */}
-              <div className="bg-white rounded-3xl p-8 shadow-xl shadow-charcoal/5 border border-charcoal/5">
-                <h3 className="font-serif text-lg text-charcoal mb-6">Agent Detail</h3>
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-charcoal/10">
-                    <img src={propertyDetails.agent.image} alt={propertyDetails.agent.name} className="w-full h-full object-cover" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-charcoal">{propertyDetails.agent.name}</p>
-                    <p className="text-xs text-charcoal/60 uppercase tracking-wider">{propertyDetails.agent.role}</p>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <button className="bg-charcoal text-white py-3 rounded-xl font-sans text-[10px] uppercase tracking-widest font-bold hover:bg-black transition-colors flex items-center justify-center gap-2">
-                    <Mail className="w-3 h-3" /> Mail Agent
-                  </button>
-                  <button className="border border-charcoal/20 text-charcoal py-3 rounded-xl font-sans text-[10px] uppercase tracking-widest font-bold hover:bg-charcoal/5 transition-colors flex items-center justify-center gap-2">
-                    <Phone className="w-3 h-3" /> Call Agent
-                  </button>
-                </div>
               </div>
 
             </div>
@@ -312,9 +319,9 @@ export default function PropertyDetail() {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1">
                   <Star className="w-6 h-6 text-gold fill-gold" />
-                  <span className="text-2xl font-bold text-charcoal">{propertyDetails.rating}</span>
+                  <span className="text-2xl font-bold text-charcoal">{data.average_rating ?? '—'}</span>
                 </div>
-                <span className="text-charcoal/60 text-sm">Based on 24 reviews</span>
+                <span className="text-charcoal/60 text-sm">Based on {data.reviews?.length ?? 0} reviews</span>
               </div>
             </div>
             <button className="hidden md:block border border-charcoal/20 px-6 py-3 rounded-full text-xs uppercase tracking-widest font-bold hover:bg-charcoal hover:text-white transition-colors">
@@ -323,79 +330,26 @@ export default function PropertyDetail() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {reviews.map((review) => (
-              <div key={review.id} className="bg-white p-8 rounded-3xl border border-charcoal/5 shadow-sm">
+            {data.reviews && data.reviews.length ? data.reviews.map((review) => (
+              <div key={review.review_id} className="bg-white p-8 rounded-3xl border border-charcoal/5 shadow-sm">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 rounded-full overflow-hidden">
-                    <img src={review.avatar} alt={review.name} className="w-full h-full object-cover" />
-                  </div>
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-charcoal/5 flex items-center justify-center text-white">{(review.reviewer_name || 'U').charAt(0)}</div>
                   <div>
-                    <h4 className="font-bold text-charcoal">{review.name}</h4>
-                    <p className="text-xs text-charcoal/40 uppercase tracking-wider">{review.date}</p>
+                    <h4 className="font-bold text-charcoal">{review.reviewer_name}</h4>
+                    <p className="text-xs text-charcoal/40 uppercase tracking-wider">{review.review_date}</p>
                   </div>
                 </div>
                 <div className="flex gap-1 mb-4">
                   {[...Array(5)].map((_, i) => (
                     <Star 
                       key={i} 
-                      className={`w-4 h-4 ${i < review.rating ? 'text-gold fill-gold' : 'text-charcoal/20'}`} 
+                      className={`w-4 h-4 ${i < (review.rating || 0) ? 'text-gold fill-gold' : 'text-charcoal/20'}`} 
                     />
                   ))}
                 </div>
-                <p className="text-charcoal/70 leading-relaxed text-sm">
-                  "{review.comment}"
-                </p>
+                <p className="text-charcoal/70 leading-relaxed text-sm">"{review.review_text}"</p>
               </div>
-            ))}
-          </div>
-          
-          <div className="mt-8 text-center md:hidden">
-             <button className="border border-charcoal/20 px-6 py-3 rounded-full text-xs uppercase tracking-widest font-bold hover:bg-charcoal hover:text-white transition-colors">
-              Write a Review
-            </button>
-          </div>
-        </div>
-
-        {/* Explore More Properties */}
-        <div className="mt-32 border-t border-charcoal/10 pt-16">
-          <div className="flex justify-between items-end mb-12">
-            <h2 className="font-serif text-4xl text-charcoal">Explore More Properties</h2>
-            <div className="flex gap-2">
-              {/* Navigation arrows could go here */}
-            </div>
-          </div>
-
-          <div className="flex overflow-x-auto gap-8 pb-12 snap-x scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
-            {recommendations.map((property) => (
-              <motion.div
-                key={property.id}
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                className="min-w-[300px] md:min-w-[350px] snap-start group cursor-pointer"
-              >
-                <Link to={`/property/${property.id}`} className="block">
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-2xl mb-4">
-                    <img 
-                      src={property.image} 
-                      alt={property.title} 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-charcoal">Verified</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="font-serif text-xl text-charcoal group-hover:text-gold transition-colors">{property.title}</h3>
-                    <p className="text-xs text-charcoal/60 font-sans">{property.location}</p>
-                    <div className="flex justify-between items-center pt-2 border-t border-charcoal/10 mt-3">
-                      <p className="font-sans font-medium text-charcoal">{property.price}</p>
-                      <p className="text-[10px] text-charcoal/60">★ {property.rating}</p>
-                    </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
+            )) : <div className="text-charcoal/60">No reviews yet.</div>}
           </div>
         </div>
 
