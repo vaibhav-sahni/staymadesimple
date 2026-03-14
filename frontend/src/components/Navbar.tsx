@@ -60,7 +60,9 @@ export default function Navbar() {
                 <div 
                   className="w-9 h-9 bg-charcoal text-white rounded-full flex items-center justify-center hover:bg-black transition-colors"
                 >
-                  <span className="text-xs font-bold">{user.fullName.charAt(0)}</span>
+                  <span className="text-xs font-bold">
+  {user?.email ? user.email.charAt(0).toUpperCase() : "U"}
+</span>
                 </div>
               </Link>
               <button 

@@ -7,17 +7,18 @@ import { useAuth } from '../context/AuthContext';
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = (e: FormEvent) => {
-    e.preventDefault();
-    if (email === 'basantiapramag@gmail.com') {
-      login(email);
-      navigate('/dashboard');
-    } else {
-      // Handle other logins or show error
-      alert('Please use the demo email: basantiapramag@gmail.com');
+  const handleLogin = async (e: FormEvent) => {
+  e.preventDefault();
+
+  try {
+    await login(email, password);
+    navigate('/dashboard');
+  } catch (error) {
+    alert("Invalid email or password");
     }
   };
 
@@ -77,10 +78,12 @@ export default function Login() {
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal/30" />
                   <input 
-                    type={showPassword ? "text" : "password"} 
-                    placeholder="Enter your password" 
-                    className="w-full bg-bone/30 border border-charcoal/10 rounded-xl py-3 pl-10 pr-10 text-sm text-charcoal placeholder:text-charcoal/30 outline-none focus:border-charcoal/30 focus:bg-bone/50 transition-all"
-                  />
+  type={showPassword ? "text" : "password"} 
+  placeholder="Enter your password"
+  value={password}
+  onChange={(e) => setPassword(e.target.value)}
+  className="w-full bg-bone/30 border border-charcoal/10 rounded-xl py-3 pl-10 pr-10 text-sm text-charcoal placeholder:text-charcoal/30 outline-none focus:border-charcoal/30 focus:bg-bone/50 transition-all"
+/>
                   <button 
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
