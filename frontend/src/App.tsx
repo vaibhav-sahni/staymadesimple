@@ -19,6 +19,7 @@ import AddProperty from './pages/AddProperty';
 import WelcomeScreen from './components/WelcomeScreen';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import AdminDashboard from './pages/AdminDashboard';
 
 function ScrollToTop() {
   const { pathname, hash } = useLocation();
@@ -58,6 +59,7 @@ function AppContent() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/my-properties" element={<MyProperties />} />
         <Route path="/my-properties/add" element={<AddProperty />} />
+        <Route path="/admin-dashboard" element={<AdminDashboard />} /> 
       </Routes>
       
       {!isLoginPage && <Footer />}

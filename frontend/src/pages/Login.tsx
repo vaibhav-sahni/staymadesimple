@@ -15,12 +15,18 @@ export default function Login() {
   e.preventDefault();
 
   try {
-    await login(email, password);
-    navigate('/dashboard');
+    const loggedUser = await login(email, password);
+
+    if (loggedUser.role === "Admin") {
+      navigate("/admin-dashboard");
+    } else {
+      navigate("/dashboard");
+    }
+
   } catch (error) {
     alert("Invalid email or password");
-    }
-  };
+  }
+};
 
   return (
     <div className="min-h-screen bg-bone flex items-center justify-center p-4 md:p-8">
