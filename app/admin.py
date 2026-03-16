@@ -31,8 +31,16 @@ def admin_list_properties(session: Session = Depends(get_rental_session), curren
             google_maps_link=p.google_maps_link,
             verification_status=p.verification_status,
             average_rating=p.average_rating,
+            average_rent=None,
             is_full=False,
         ) for p in props]
+        # compute average rent for each property
+        for i, p in enumerate(props):
+            try:
+                avg_r = session.exec(select(func.avg(Room.rent_per_month)).where(Room.property_id == p.property_id, Room.is_active == True)).first()
+                results[i].average_rent = float(avg_r) if avg_r is not None else None
+            except Exception:
+                results[i].average_rent = None
         return results
     except Exception as exc:
         tb = traceback.format_exc()

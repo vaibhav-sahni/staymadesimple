@@ -12,6 +12,10 @@ from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy import text, func, or_, exists
 import logging
 import traceback
+import asyncio
+from datetime import datetime, date as _date
+from sqlmodel import Session
+from .db import rental_engine
 
 logger = logging.getLogger(__name__)
 
@@ -59,18 +63,22 @@ def list_properties(
             stmt = stmt.where(Property.property_type == property_type)
 
         if min_rating is not None:
-            stmt = stmt.where(Property.average_rating >= min_rating)
+            # Treat min_rating == 0 as "include unrated properties" as well
+            if float(min_rating) == 0.0:
+                stmt = stmt.where(or_(Property.average_rating >= 0, Property.average_rating == None))
+            else:
+                stmt = stmt.where(Property.average_rating >= min_rating)
         if max_rating is not None:
             stmt = stmt.where(Property.average_rating <= max_rating)
 
         # price filtering: correlated EXISTS — require at least one active room within price range
+        # price filtering: interpret min_price/max_price as average rent per property
         if min_price is not None or max_price is not None:
-            room_sub = select(Room).where(Room.property_id == Property.property_id, Room.is_active == True)
+            avg_rent_sub = select(func.avg(Room.rent_per_month)).where(Room.property_id == Property.property_id, Room.is_active == True).scalar_subquery()
             if min_price is not None:
-                room_sub = room_sub.where(Room.rent_per_month >= min_price)
+                stmt = stmt.where(avg_rent_sub >= min_price)
             if max_price is not None:
-                room_sub = room_sub.where(Room.rent_per_month <= max_price)
-            stmt = stmt.where(room_sub.exists())
+                stmt = stmt.where(avg_rent_sub <= max_price)
 
         # availability (best-effort current-day using cached `room.is_booked`) using correlated EXISTS
         if available is True:
@@ -125,6 +133,7 @@ def list_properties(
             google_maps_link=p.google_maps_link,
             verification_status=p.verification_status,
             average_rating=p.average_rating,
+            average_rent=None,
             is_full=False,
         ) for p in props]
         # compute occupancy and availability per property
@@ -191,11 +200,61 @@ def list_properties(
                     results[idx].next_available = None
                     results[idx].availability_text = "Fully booked"
 
+            # compute average rent per property (active rooms)
+            try:
+                avg_r = session.exec(select(func.avg(Room.rent_per_month)).where(Room.property_id == p.property_id, Room.is_active == True)).first()
+                results[idx].average_rent = float(avg_r) if avg_r is not None else None
+            except Exception:
+                results[idx].average_rent = None
+
         return results
     except Exception as exc:
         tb = traceback.format_exc()
         logger.exception("list_properties failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Internal server error (see server logs)\n{tb}")
+
+
+async def expire_bookings_loop(sleep_seconds: int = 24 * 3600):
+    """Background loop that marks bookings whose end_date has passed as Completed.
+
+    This runs periodically (default daily). It is safe to call multiple times.
+    """
+    while True:
+        try:
+            today = _date.today()
+            changed = 0
+            with Session(rental_engine) as session:
+                stmt = select(Booking).where(Booking.booking_status == 'Active')
+                rows = session.exec(stmt).all()
+                for b in rows:
+                    ed = getattr(b, 'end_date', None)
+                    if not ed:
+                        continue
+                    parsed = None
+                    if isinstance(ed, str):
+                        try:
+                            parsed = datetime.fromisoformat(ed).date()
+                        except Exception:
+                            try:
+                                parsed = datetime.strptime(ed, "%Y-%m-%d").date()
+                            except Exception:
+                                parsed = None
+                    elif isinstance(ed, datetime):
+                        parsed = ed.date()
+                    elif isinstance(ed, _date):
+                        parsed = ed
+
+                    if parsed and parsed < today:
+                        b.booking_status = 'Completed'
+                        session.add(b)
+                        changed += 1
+
+                if changed > 0:
+                    session.commit()
+                    logger.info("expire_bookings_loop: marked %d bookings completed", changed)
+        except Exception:
+            logger.exception("expire_bookings_loop failed")
+        await asyncio.sleep(sleep_seconds)
 
 
 class RoomOut(BaseException):
@@ -299,14 +358,20 @@ def create_booking_for_property(property_id: int, payload: BookingCreate, curren
             booking_status='Active',
         )
 
+        # avoid nested transaction errors by using explicit add/flush/commit
+        session.add(booking)
+        logger.debug("create_booking_for_property: after add booking=%s", getattr(booking, 'booking_id', None))
+        session.flush()
+        logger.debug("create_booking_for_property: after flush booking=%s", getattr(booking, 'booking_id', None))
         try:
-            with session.begin():
-                session.add(booking)
-                session.flush()
-                session.refresh(booking)
+            session.commit()
+            logger.debug("create_booking_for_property: committed booking=%s", getattr(booking, 'booking_id', None))
         except IntegrityError as e:
+            # rollback and translate to 409 conflict
+            session.rollback()
             logger.exception("IntegrityError creating booking: %s", e)
             raise HTTPException(status_code=409, detail="Booking conflicts with existing active booking")
+        session.refresh(booking)
 
         return BookingRead(
             booking_id=booking.booking_id,

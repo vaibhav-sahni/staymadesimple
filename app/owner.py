@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from .db import get_rental_session
 from .models import Property, UserAuth, Room, Booking
+from sqlalchemy import func
 from .schemas import PropertyCreate, PropertyRead, BookingRead, RoomCreate, RoomRead, RoomAvailability
 from datetime import datetime, date
 from .deps import require_role, get_current_user
@@ -89,6 +90,7 @@ def create_property(
             google_maps_link=prop.google_maps_link,
             verification_status=prop.verification_status,
             average_rating=prop.average_rating,
+            average_rent=(float(payload.rent_per_month) if getattr(payload, 'rent_per_month', None) is not None else None),
         )
     except Exception as exc:
         tb = traceback.format_exc()
@@ -193,10 +195,20 @@ def owner_add_room(property_id: int, payload: RoomCreate, current_user: UserAuth
             room_number = f"R{len(existing) + 1}"
 
         room = Room(property_id=property_id, room_number=room_number, rent_per_month=payload.rent_per_month or 0.0, is_active=payload.is_active if payload.is_active is not None else True)
-        with session.begin():
-            session.add(room)
-            session.flush()
-            session.refresh(room)
+        logger.debug("owner_add_room: before add room=%s session.in_transaction=%s", room, session.in_transaction())
+        # Add and flush; commit only if there's no surrounding transaction
+        session.add(room)
+        logger.debug("owner_add_room: after session.add, room.room_id=%s", getattr(room, 'room_id', None))
+        session.flush()
+        logger.debug("owner_add_room: after flush, room.room_id=%s", getattr(room, 'room_id', None))
+        try:
+            session.commit()
+            logger.debug("owner_add_room: committed transaction")
+        except Exception:
+            logger.exception("owner_add_room: commit failed")
+            raise
+        session.refresh(room)
+        logger.debug("owner_add_room: after refresh, room.room_id=%s", getattr(room, 'room_id', None))
 
         return RoomRead(room_id=room.room_id, property_id=room.property_id, room_number=room.room_number, rent_per_month=room.rent_per_month, is_active=room.is_active)
     except HTTPException:
@@ -233,10 +245,15 @@ def owner_update_room(property_id: int, room_id: int, payload: RoomCreate, curre
         if payload.is_active is not None:
             room.is_active = payload.is_active
 
-        with session.begin():
-            session.add(room)
-            session.flush()
-            session.refresh(room)
+        # Add and flush; commit only if there's no surrounding transaction
+        session.add(room)
+        session.flush()
+        try:
+            session.commit()
+        except Exception:
+            logger.exception("owner_update_room: commit failed")
+            raise
+        session.refresh(room)
 
         return RoomRead(room_id=room.room_id, property_id=room.property_id, room_number=room.room_number, rent_per_month=room.rent_per_month, is_active=room.is_active)
     except HTTPException:
@@ -575,11 +592,19 @@ def list_my_properties(
                 google_maps_link=p.google_maps_link,
                 verification_status=p.verification_status,
                 average_rating=p.average_rating,
+                average_rent=None,
                 is_full=is_full,
                 rooms_available=rooms_available,
                 next_available=next_available,
                 availability_text=availability_text,
             ))
+        # compute average rent per property for owner's properties
+        for i, p in enumerate(props):
+            try:
+                avg_r = session.exec(select(func.avg(Room.rent_per_month)).where(Room.property_id == p.property_id, Room.is_active == True)).first()
+                results[i].average_rent = float(avg_r) if avg_r is not None else None
+            except Exception:
+                results[i].average_rent = None
         return results
     except Exception as exc:
         tb = traceback.format_exc()

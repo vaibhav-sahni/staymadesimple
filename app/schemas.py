@@ -47,6 +47,7 @@ class PropertyRead(BaseModel):
     google_maps_link: Optional[str] = None
     verification_status: Optional[str] = None
     average_rating: Optional[float] = None
+    average_rent: Optional[float] = None
     is_full: Optional[bool] = False
     rooms_available: Optional[int] = 0
     next_available: Optional[str] = None
