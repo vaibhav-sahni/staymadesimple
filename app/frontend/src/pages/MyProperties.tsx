@@ -192,19 +192,39 @@ export default function MyProperties() {
             <Link to="/dashboard" className="inline-flex items-center gap-2 text-charcoal/40 hover:text-charcoal transition-colors mb-4 text-xs uppercase tracking-widest font-bold">
               <ArrowLeft className="w-4 h-4" /> Back to Dashboard
             </Link>
-            <h1 className="font-serif text-4xl md:text-5xl text-charcoal mb-2">
-              My Properties
-            </h1>
-            <p className="font-sans text-charcoal/60 text-sm">
-              Manage your listed properties, track status, and update details.
-            </p>
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="font-serif text-4xl md:text-5xl text-charcoal mb-2">My Properties</h1>
+                <p className="font-sans text-charcoal/60 text-sm">Manage your listed properties, track status, and update details.</p>
+              </div>
+              {/* show owner verification badge when user is owner */}
+              {(user && (user as any).role && String((user as any).role).toLowerCase() === 'owner') ? (
+                ((user as any).verificationStatus && /(verif)/i.test((user as any).verificationStatus)) ? (
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-600 border border-green-100 font-bold text-sm">
+                    <CheckCircle className="w-4 h-4" /> Verified Owner
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-charcoal/5 text-charcoal/60 border border-charcoal/10 font-bold text-sm">
+                    <X className="w-4 h-4" /> Unverified Owner
+                  </span>
+                )
+              ) : null}
+            </div>
           </div>
           
-          <Link to="/my-properties/add">
-            <button className="px-6 py-3 rounded-full bg-charcoal text-white hover:bg-black transition-colors text-xs uppercase tracking-widest font-bold flex items-center gap-2 shadow-lg shadow-charcoal/20">
-              <Plus className="w-4 h-4" /> Add New Property
-            </button>
-          </Link>
+          {(user && (user as any).role && String((user as any).role).toLowerCase() === 'owner') ? (
+            ((user as any).verificationStatus && /(verif)/i.test((user as any).verificationStatus)) ? (
+              <Link to="/my-properties/add">
+                <button className="px-6 py-3 rounded-full bg-charcoal text-white hover:bg-black transition-colors text-xs uppercase tracking-widest font-bold flex items-center gap-2 shadow-lg shadow-charcoal/20">
+                  <Plus className="w-4 h-4" /> Add New Property
+                </button>
+              </Link>
+            ) : (
+              <button title="Your account is not verified to add properties" className="px-6 py-3 rounded-full bg-charcoal/20 text-charcoal/40 transition-colors text-xs uppercase tracking-widest font-bold flex items-center gap-2 shadow-lg shadow-charcoal/10 cursor-not-allowed" disabled>
+                <Plus className="w-4 h-4" /> Add New Property
+              </button>
+            )
+          ) : null}
         </motion.div>
 
         {/* Controls Bar */}

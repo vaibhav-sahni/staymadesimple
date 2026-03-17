@@ -14,6 +14,7 @@ interface AuthContextType {
   logout: () => void;
   showWelcome: boolean;
   setShowWelcome: (show: boolean) => void;
+  setUser?: (u: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,7 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const restoredUser: User = {
           fullName: (me as any).full_name || '',
           email: (me as any).email,
-          role: (me as any).role
+          role: (me as any).role,
+          verificationStatus: (me as any).verification_status || null,
         };
 
         setUser(restoredUser);
@@ -61,7 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const loggedUser: User = {
       fullName: (me as any).full_name || '',
       email: (me as any).email,
-      role: (me as any).role
+      role: (me as any).role,
+      verificationStatus: (me as any).verification_status || null,
     };
 
     setUser(loggedUser);
@@ -78,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, showWelcome, setShowWelcome }}>
+    <AuthContext.Provider value={{ user, login, logout, showWelcome, setShowWelcome, setUser }}>
       {children}
     </AuthContext.Provider>
   );

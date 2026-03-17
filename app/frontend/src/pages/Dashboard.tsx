@@ -184,11 +184,13 @@ export default function Dashboard() {
              <button className="px-6 py-3 rounded-full border border-charcoal/10 hover:bg-charcoal hover:text-white transition-colors text-xs uppercase tracking-widest font-bold flex items-center gap-2">
                 <Shield className="w-4 h-4" /> Support
              </button>
-             <Link to="/my-properties">
-               <button className="px-6 py-3 rounded-full bg-charcoal text-white hover:bg-black transition-colors text-xs uppercase tracking-widest font-bold flex items-center gap-2">
-                  <Home className="w-4 h-4" /> Your Property
-               </button>
-             </Link>
+             {(user && (user as any).role && String((user as any).role).toLowerCase() === 'owner') ? (
+               <Link to="/my-properties">
+                 <button className="px-6 py-3 rounded-full bg-charcoal text-white hover:bg-black transition-colors text-xs uppercase tracking-widest font-bold flex items-center gap-2">
+                    <Home className="w-4 h-4" /> Your Property
+                 </button>
+               </Link>
+             ) : null}
           </div>
         </motion.div>
 
