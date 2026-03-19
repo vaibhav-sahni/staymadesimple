@@ -34,6 +34,9 @@ export default function AdminDashboard() {
         setAllProperties(props || []);
         setAllOwners(owners || []);
         setBookings(bks || []);
+        // Debug: log fetched admin lists to inspect verification_status values
+        console.debug('AdminDashboard fetched pendingOwners:', JSON.parse(JSON.stringify(uOwners || [])));
+        console.debug('AdminDashboard fetched allOwners:', JSON.parse(JSON.stringify(owners || [])));
       } catch (e) {
         // ignore
       }
