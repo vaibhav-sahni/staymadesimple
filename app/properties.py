@@ -361,16 +361,18 @@ def create_booking_for_property(property_id: int, payload: BookingCreate, curren
         # avoid nested transaction errors by using explicit add/flush/commit
         session.add(booking)
         logger.debug("create_booking_for_property: after add booking=%s", getattr(booking, 'booking_id', None))
-        session.flush()
-        logger.debug("create_booking_for_property: after flush booking=%s", getattr(booking, 'booking_id', None))
         try:
+            session.flush()
+            logger.debug("create_booking_for_property: after flush booking=%s", getattr(booking, 'booking_id', None))
             session.commit()
             logger.debug("create_booking_for_property: committed booking=%s", getattr(booking, 'booking_id', None))
         except IntegrityError as e:
-            # rollback and translate to 409 conflict
             session.rollback()
             logger.exception("IntegrityError creating booking: %s", e)
             raise HTTPException(status_code=409, detail="Booking conflicts with existing active booking")
+        except Exception:
+            session.rollback()
+            raise
         session.refresh(booking)
 
         return BookingRead(
