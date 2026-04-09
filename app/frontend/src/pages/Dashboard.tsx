@@ -236,7 +236,14 @@ export default function Dashboard() {
                           {editingBookingId === ab.booking_id ? (
                             <div className="space-y-2">
                               <div className="grid grid-cols-2 gap-2">
-                                <input className="p-2 border rounded" type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} />
+                                <input
+                                  className="p-2 border rounded"
+                                  type="date"
+                                  value={editStartDate}
+                                  onChange={(e) => setEditStartDate(e.target.value)}
+                                  disabled={Boolean(ab?.booking_status && String(ab.booking_status).toLowerCase() === 'active')}
+                                  title={ab?.booking_status && String(ab.booking_status).toLowerCase() === 'active' ? 'Start date cannot be changed for active bookings' : undefined}
+                                />
                                 <input className="p-2 border rounded" type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} />
                               </div>
                               <div className="flex gap-2">
