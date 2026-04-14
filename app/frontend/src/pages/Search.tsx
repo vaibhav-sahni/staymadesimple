@@ -33,6 +33,8 @@ type FrontProp = {
   image: string | null;
   type?: string | null;
   rating: number | null;
+  verified?: boolean;
+  verification_status?: string | null;
 };
 
 const initialProps: FrontProp[] = [];
@@ -46,6 +48,7 @@ export default function Search() {
   const [filterType, setFilterType] = useState<string | null>(null);
   const [availableFrom, setAvailableFrom] = useState<string | null>(null);
   const [availableTo, setAvailableTo] = useState<string | null>(null);
+  const [onlyVerified, setOnlyVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,11 +74,13 @@ export default function Search() {
     const pt = searchParams.get('property_type');
     const af = searchParams.get('available_from');
     const at = searchParams.get('available_to');
-    if (q || pt || af || at) {
+    const v = searchParams.get('verified');
+    if (q || pt || af || at || v) {
       setSearchQuery(q || '');
       setFilterType(pt || null);
       setAvailableFrom(af || null);
       setAvailableTo(at || null);
+      setOnlyVerified(v === 'true');
     }
   }, [searchParams]);
 
@@ -88,22 +93,29 @@ export default function Search() {
     const params: string[] = [];
     if (q) params.push(`q=${encodeURIComponent(q)}`);
     if (filterType) params.push(`property_type=${encodeURIComponent(filterType)}`);
+    // include date filters only when both dates are selected
     if (availableFrom && availableTo) {
       params.push(`available_from=${encodeURIComponent(availableFrom)}`);
       params.push(`available_to=${encodeURIComponent(availableTo)}`);
     }
+    if (onlyVerified) params.push(`verified=true`);
     const qs = params.length ? `?${params.join('&')}` : '';
     apiFetch(`/properties${qs}`)
       .then((rows: any[]) => {
         if (!mounted) return;
         const mapped = (rows || []).map((p: any) => ({
-          id: p.property_id,
+          id: Number(p.property_id) || 0,
           title: p.property_description || 'Untitled Property',
           location: p.city || p.address || '',
           price: p.average_rent ?? null,
-          // backend may expose image_url or images array; fall back to google_maps_link or placeholder
           image: p.image_url || (p.images && p.images.length ? p.images[0] : (p.google_maps_link || getPlaceholderImage(p.property_id))),
           type: p.property_type || null,
+          verification_status: p.verification_status || (p.verification || null) || null,
+          verified: (
+            ((p.verification_status || p.verification || '') + '').toLowerCase().includes('verif') ||
+            (p.is_verified === true) ||
+            (p.verified === true)
+          ),
           rating: p.average_rating ?? null,
         }));
         setProperties(mapped);
@@ -113,7 +125,7 @@ export default function Search() {
       })
       .finally(() => setLoading(false));
     return () => { mounted = false; };
-  }, [searchQuery, filterType, availableFrom, availableTo]);
+  }, [searchQuery, filterType, availableFrom, availableTo, onlyVerified]);
 
   const handleReset = () => {
     setIsReset(true);
@@ -122,6 +134,10 @@ export default function Search() {
     setMinRating(0);
     setSortOption('newest');
     setSearchQuery('');
+    setFilterType(null);
+    setAvailableFrom(null);
+    setAvailableTo(null);
+    setOnlyVerified(false);
   };
 
   const handleSearch = (payload: any) => {
@@ -137,6 +153,7 @@ export default function Search() {
 
   const filteredProperties = properties
     .filter(p => {
+      if (onlyVerified && !p.verified) return false;
       const parseNum = (v: any) => {
         if (v == null) return 0;
         if (typeof v === 'number') return v;
@@ -153,7 +170,7 @@ export default function Search() {
     })
     .slice()
     .sort((a, b) => {
-      const parseNum = (v: any) => {
+      const getNum = (v: any) => {
         if (v == null) return 0;
         if (typeof v === 'number') return v;
         if (typeof v === 'string') {
@@ -163,25 +180,30 @@ export default function Search() {
         }
         return 0;
       };
-      const aPrice = parseNum(a.price);
-      const bPrice = parseNum(b.price);
-      const aRating = parseNum(a.rating);
-      const bRating = parseNum(b.rating);
 
-      const compare = (x: number, y: number) => {
-        if (x < y) return -1;
-        if (x > y) return 1;
-        return 0;
-      };
+      const aPrice = getNum(a.price);
+      const bPrice = getNum(b.price);
+      const aRating = getNum(a.rating);
+      const bRating = getNum(b.rating);
+      const aId = getNum(a.id);
+      const bId = getNum(b.id);
 
+      const compare = (x: number, y: number) => (x < y ? -1 : x > y ? 1 : 0);
+
+      let res = 0;
       switch (sortOption) {
-        case 'price-asc': return compare(aPrice, bPrice);
-        case 'price-desc': return compare(bPrice, aPrice);
-        case 'rating-asc': return compare(aRating, bRating);
-        case 'rating-desc': return compare(bRating, aRating);
-        case 'newest': return compare(b.id, a.id);
-        default: return 0;
+        case 'price-asc': res = compare(aPrice, bPrice); break;
+        case 'price-desc': res = compare(bPrice, aPrice); break;
+        case 'rating-asc': res = compare(aRating, bRating); break;
+        case 'rating-desc': res = compare(bRating, aRating); break;
+        case 'newest': res = compare(bId, aId); break;
+        default: res = 0;
       }
+
+      if (res === 0) {
+        res = compare(bRating, aRating) || compare(aPrice, bPrice) || a.title.localeCompare(b.title || '');
+      }
+      return res;
     });
 
   // Debugging output to help trace disappearing items
@@ -193,6 +215,9 @@ export default function Search() {
       <SearchPill 
         isFixed={true} 
         initialValue={searchQuery || ''} 
+        initialPropertyType={filterType}
+        initialAvailableFrom={availableFrom}
+        initialAvailableTo={availableTo}
         placeholder="All locations" 
         onReset={handleReset}
         onSearch={handleSearch}
@@ -205,8 +230,7 @@ export default function Search() {
               <span className="italic">{filteredProperties.length} {filteredProperties.length === 1 ? 'property' : 'properties'}</span> found in {searchQuery && searchQuery.trim() ? searchQuery.trim() : 'All locations'}
             </>
           </h1>
-          <div className="flex gap-2 relative">
-            {/* Filter Button & Dropdown */}
+          <div className="flex gap-2 relative items-center">
             <div className="relative">
               <button 
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -235,7 +259,6 @@ export default function Search() {
                       <button onClick={() => { setPriceRange({min: 0, max: 100000}); setMinRating(0); }} className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40 hover:text-charcoal">Reset</button>
                     </div>
 
-                    {/* Price Range */}
                     <div className="mb-6">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3 block">Price Range</label>
                       <div className="flex gap-3 items-center mb-3">
@@ -261,7 +284,6 @@ export default function Search() {
                       </div>
                     </div>
 
-                    {/* Rating Filter */}
                     <div>
                       <label className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3 block">Rating</label>
                       <div className="space-y-2">
@@ -291,7 +313,6 @@ export default function Search() {
               </AnimatePresence>
             </div>
 
-            {/* Sort Button & Dropdown */}
             <div className="relative">
               <button 
                 onClick={() => setIsSortOpen(!isSortOpen)}
@@ -352,7 +373,6 @@ export default function Search() {
                     onError={(e) => {
                       const el = e.currentTarget as HTMLImageElement;
                       const src = el.src || '';
-                      // detect current local unsplashN and advance to next local image
                       const m = src.match(/unsplash(\d+)\.jpg$/);
                       if (m) {
                         const num = Number(m[1]);
@@ -360,12 +380,10 @@ export default function Search() {
                           el.src = `/images/unsplash${num + 1}.jpg`;
                           return;
                         }
-                        // exhausted local images -> fallback to hotlink
                         const idx = property.id ? ((property.id - 1) % unsplashIds.length) : 0;
                         el.src = `https://source.unsplash.com/${unsplashIds[idx]}/1600x900`;
                         return;
                       }
-                      // initial failure or non-local src: start with first local image
                       el.src = localImages[0];
                     }}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
