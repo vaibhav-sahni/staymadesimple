@@ -1,7 +1,6 @@
 export async function apiFetch(path: string, opts: RequestInit = {}) {
-  const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  const API = (import.meta.env.VITE_API_URL as string) || "";
   const token = localStorage.getItem("sms_token");
-
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) } as any;
   if (token) headers["Authorization"] = `Bearer ${token}`;
 

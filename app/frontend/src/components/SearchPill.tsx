@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MapPin, Calendar, Home, X } from 'lucide-react';
+import { Search, MapPin, Calendar, Home, X, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import DatePicker from './DatePicker';
 
 interface SearchParams {
   q?: string;
@@ -16,6 +17,9 @@ interface SearchPillProps {
   isFixed?: boolean;
   className?: string;
   initialValue?: string;
+  initialPropertyType?: string | null;
+  initialAvailableFrom?: string | null;
+  initialAvailableTo?: string | null;
   placeholder?: string;
   onReset?: () => void;
   onSearch?: (params: SearchParams) => void;
@@ -26,6 +30,9 @@ export default function SearchPill({
   isFixed = false, 
   className,
   initialValue = "",
+  initialPropertyType = null,
+  initialAvailableFrom = null,
+  initialAvailableTo = null,
   placeholder = "All locations",
   onReset,
   onSearch,
@@ -33,13 +40,50 @@ export default function SearchPill({
 }: SearchPillProps) {
   const navigate = useNavigate();
   const [value, setValue] = useState(initialValue);
-  const [propertyType, setPropertyType] = useState<string | null>(null);
-  const [availableFrom, setAvailableFrom] = useState<string | null>(null);
-  const [availableTo, setAvailableTo] = useState<string | null>(null);
+  const [propertyType, setPropertyType] = useState<string | null>(initialPropertyType);
+  const [availableFrom, setAvailableFrom] = useState<string | null>(initialAvailableFrom);
+  const [availableTo, setAvailableTo] = useState<string | null>(initialAvailableTo);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [selectedType, setSelectedType] = useState('All Types');
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const typeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setValue(initialValue);
   }, [initialValue]);
+
+  useEffect(() => {
+    setPropertyType(initialPropertyType);
+    setSelectedType(initialPropertyType || 'All Types');
+  }, [initialPropertyType]);
+
+  useEffect(() => {
+    setAvailableFrom(initialAvailableFrom);
+    setAvailableTo(initialAvailableTo);
+    if (initialAvailableFrom && initialAvailableTo) {
+      setStartDate(new Date(initialAvailableFrom));
+      setEndDate(new Date(initialAvailableTo));
+    } else {
+      setStartDate(null);
+      setEndDate(null);
+    }
+  }, [initialAvailableFrom, initialAvailableTo]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+        setShowCalendar(false);
+      }
+      if (typeRef.current && !typeRef.current.contains(event.target as Node)) {
+        setShowTypeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleClick = () => {
     if (!isFixed) {
@@ -50,7 +94,33 @@ export default function SearchPill({
   const handleReset = (e: React.MouseEvent) => {
     e.stopPropagation();
     setValue("");
+    setStartDate(null);
+    setEndDate(null);
+    setSelectedType('All Types');
+    setPropertyType(null);
+    setAvailableFrom(null);
+    setAvailableTo(null);
     if (onReset) onReset();
+  };
+
+  const toggleCalendar = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isFixed) {
+      setShowCalendar(!showCalendar);
+      setShowTypeDropdown(false);
+    } else {
+      navigate('/search');
+    }
+  };
+
+  const toggleTypeDropdown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isFixed) {
+      setShowTypeDropdown(!showTypeDropdown);
+      setShowCalendar(false);
+    } else {
+      navigate('/search');
+    }
   };
 
   const handleSearch = (e?: React.MouseEvent | React.KeyboardEvent) => {
@@ -61,8 +131,10 @@ export default function SearchPill({
       const parts: string[] = [];
       if (payload.q) parts.push(`q=${encodeURIComponent(payload.q)}`);
       if (payload.property_type) parts.push(`property_type=${encodeURIComponent(payload.property_type)}`);
-      if (payload.available_from) parts.push(`available_from=${encodeURIComponent(payload.available_from)}`);
-      if (payload.available_to) parts.push(`available_to=${encodeURIComponent(payload.available_to)}`);
+      if (payload.available_from && payload.available_to) {
+        parts.push(`available_from=${encodeURIComponent(payload.available_from)}`);
+        parts.push(`available_to=${encodeURIComponent(payload.available_to)}`);
+      }
       const qs = parts.length ? `?${parts.join('&')}` : '';
       navigate(`/search${qs}`);
     }
@@ -76,13 +148,35 @@ export default function SearchPill({
     duration: 1.2
   };
 
+  const formatToDDMMYY = (date: Date) => {
+    const d = date.getDate().toString().padStart(2, '0');
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const y = date.getFullYear().toString().slice(-2);
+    return `${d}-${m}-${y}`;
+  };
+
+  const formatToISODate = (date: Date) => {
+    const y = date.getFullYear();
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const formatDateRange = () => {
+    if (!startDate) return 'Add dates';
+    const startStr = formatToDDMMYY(startDate);
+    if (!endDate) return `${startStr} to ...`;
+    const endStr = formatToDDMMYY(endDate);
+    return `${startStr} to ${endStr}`;
+  };
+
   return (
     <motion.div
       layoutId="search-pill"
       onClick={handleClick}
       transition={SPRING_TRANSITION}
       className={cn(
-        "z-40 bg-white/80 backdrop-blur-md border border-charcoal/5 flex items-center overflow-hidden cursor-pointer transition-shadow hover:shadow-xl hover:shadow-charcoal/5",
+        "z-40 bg-white/80 backdrop-blur-md border border-charcoal/5 flex items-center overflow-visible cursor-pointer transition-shadow hover:shadow-xl hover:shadow-charcoal/5",
         isFixed 
           ? "fixed top-24 left-1/2 -translate-x-1/2 w-[90%] max-w-5xl rounded-2xl shadow-sm h-16" 
           : "relative w-full max-w-3xl rounded-full shadow-lg h-20",
@@ -115,7 +209,7 @@ export default function SearchPill({
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(e); }}
               placeholder={placeholder}
-              className="text-sm font-medium outline-none placeholder:text-charcoal bg-transparent truncate min-w-[100px]" 
+              className="text-sm font-medium outline-none placeholder:text-charcoal/30 placeholder:font-light placeholder:tracking-wide text-charcoal bg-transparent truncate min-w-[100px]"
               readOnly={!(isFixed || editable)} 
             />
           </div>
@@ -123,14 +217,18 @@ export default function SearchPill({
       </div>
       
       {/* Dates Segment */}
-      <div className={cn("flex-1 flex items-center border-r border-charcoal/10 hidden md:flex h-full", isFixed ? "px-4" : "px-6")}>
+      <div
+        ref={calendarRef}
+        onClick={toggleCalendar}
+        className={cn("flex-1 flex items-center border-r border-charcoal/10 hidden md:flex h-full relative hover:bg-charcoal/5 transition-colors", isFixed ? "px-4" : "px-6")}
+      >
         <motion.div 
           layoutId="search-pill-dates"
           transition={SPRING_TRANSITION}
           className="flex items-center w-full overflow-hidden"
         >
           <motion.div layoutId="search-pill-dates-icon" transition={SPRING_TRANSITION}>
-            <Calendar className="w-4 h-4 text-charcoal/40 mr-3 shrink-0" />
+            <Calendar className={`w-4 h-4 mr-3 shrink-0 transition-colors ${startDate ? 'text-charcoal' : 'text-charcoal/40'}`} />
           </motion.div>
           <div className="flex flex-col overflow-hidden w-full items-start">
             <motion.span 
@@ -143,29 +241,43 @@ export default function SearchPill({
             <motion.span 
                 layoutId="search-pill-dates-value"
                 transition={SPRING_TRANSITION}
-                className="text-sm font-medium text-charcoal truncate"
+                className={`text-sm font-medium truncate ${startDate ? 'text-charcoal' : 'text-charcoal/60'}`}
               >
-                {availableFrom && availableTo ? `${availableFrom} → ${availableTo}` : 'Add dates'}
+                {formatDateRange()}
               </motion.span>
-            {isFixed && (
-              <div className="ml-3 flex gap-2 items-center">
-                <input type="date" value={availableFrom || ''} onChange={(e) => setAvailableFrom(e.target.value || null)} className="text-xs" />
-                <input type="date" value={availableTo || ''} onChange={(e) => setAvailableTo(e.target.value || null)} className="text-xs" />
-              </div>
-            )}
           </div>
         </motion.div>
+
+        <AnimatePresence>
+          {showCalendar && (
+            <DatePicker
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+                setAvailableFrom(start ? formatToISODate(start) : null);
+                setAvailableTo(end ? formatToISODate(end) : null);
+              }}
+              onClose={() => setShowCalendar(false)}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Type Segment */}
-      <div className={cn("flex-1 flex items-center h-full", isFixed ? "px-4" : "px-6")}>
+      <div
+        ref={typeRef}
+        onClick={toggleTypeDropdown}
+        className={cn("flex-1 flex items-center h-full relative hover:bg-charcoal/5 transition-colors", isFixed ? "px-4" : "px-6")}
+      >
         <motion.div 
           layoutId="search-pill-type"
           transition={SPRING_TRANSITION}
           className="flex items-center w-full overflow-hidden"
         >
           <motion.div layoutId="search-pill-type-icon" transition={SPRING_TRANSITION}>
-            <Home className="w-4 h-4 text-charcoal/40 mr-3 shrink-0" />
+            <Home className={`w-4 h-4 mr-3 shrink-0 transition-colors ${selectedType !== 'All Types' ? 'text-charcoal' : 'text-charcoal/40'}`} />
           </motion.div>
           <div className="flex flex-col overflow-hidden w-full items-start">
             <motion.span 
@@ -178,21 +290,43 @@ export default function SearchPill({
             <motion.span 
               layoutId="search-pill-type-value"
               transition={SPRING_TRANSITION}
-              className="text-sm font-medium text-charcoal truncate"
+              className={`text-sm font-medium truncate ${selectedType !== 'All Types' ? 'text-charcoal' : 'text-charcoal/60'}`}
             >
-              {propertyType || 'All Types'}
+              {selectedType}
             </motion.span>
-            {isFixed && (
-              <select value={propertyType || ''} onChange={(e) => setPropertyType(e.target.value || null)} className="ml-3 text-sm">
-                <option value="">All Types</option>
-                <option value="Guest House">Guest House</option>
-                <option value="Boys PG">Boys PG</option>
-                <option value="Girls PG">Girls PG</option>
-                <option value="Serviced Apartment">Serviced Apartment</option>
-              </select>
-            )}
           </div>
         </motion.div>
+
+        <AnimatePresence>
+          {showTypeDropdown && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className="absolute top-full mt-4 left-1/2 -translate-x-1/2 bg-white rounded-3xl shadow-2xl shadow-charcoal/10 border border-charcoal/5 p-3 w-[240px] z-50 cursor-default origin-top flex flex-col gap-1"
+            >
+              {['All Types', 'Guest House', 'Boys PG', 'Girls PG', 'Serviced Apartment'].map((type) => (
+                <button
+                  key={type}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPropertyType(type === 'All Types' ? null : type);
+                    setSelectedType(type);
+                    setShowTypeDropdown(false);
+                  }}
+                  className={`flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-medium transition-colors ${
+                    selectedType === type
+                      ? 'bg-charcoal text-white'
+                      : 'text-charcoal/70 hover:bg-charcoal/5 hover:text-charcoal'
+                  }`}
+                >
+                  {type}
+                  {selectedType === type && <Check className="w-4 h-4" />}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Actions */}

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Filter, Star, CheckCircle } from 'lucide-react';
+import { Filter, ArrowUp, ArrowDown, Star, Calendar, CheckCircle } from 'lucide-react';
 
 // Local sample images placed in public/images
 const localImages = [
@@ -53,6 +53,7 @@ export default function Search() {
   const [error, setError] = useState<string | null>(null);
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isSortOpen, setIsSortOpen] = useState(false);
   
   // Filter States
   const [priceRange, setPriceRange] = useState({ min: 0, max: 100000 });
@@ -74,7 +75,7 @@ export default function Search() {
     const af = searchParams.get('available_from');
     const at = searchParams.get('available_to');
     const v = searchParams.get('verified');
-    if (q || pt || af || at) {
+    if (q || pt || af || at || v) {
       setSearchQuery(q || '');
       setFilterType(pt || null);
       setAvailableFrom(af || null);
@@ -92,9 +93,11 @@ export default function Search() {
     const params: string[] = [];
     if (q) params.push(`q=${encodeURIComponent(q)}`);
     if (filterType) params.push(`property_type=${encodeURIComponent(filterType)}`);
-    // include date filters if either provided
-    if (availableFrom) params.push(`available_from=${encodeURIComponent(availableFrom)}`);
-    if (availableTo) params.push(`available_to=${encodeURIComponent(availableTo)}`);
+    // include date filters only when both dates are selected
+    if (availableFrom && availableTo) {
+      params.push(`available_from=${encodeURIComponent(availableFrom)}`);
+      params.push(`available_to=${encodeURIComponent(availableTo)}`);
+    }
     if (onlyVerified) params.push(`verified=true`);
     const qs = params.length ? `?${params.join('&')}` : '';
     apiFetch(`/properties${qs}`)
@@ -105,11 +108,9 @@ export default function Search() {
           title: p.property_description || 'Untitled Property',
           location: p.city || p.address || '',
           price: p.average_rent ?? null,
-          // backend may expose image_url or images array; fall back to google_maps_link or placeholder
           image: p.image_url || (p.images && p.images.length ? p.images[0] : (p.google_maps_link || getPlaceholderImage(p.property_id))),
           type: p.property_type || null,
           verification_status: p.verification_status || (p.verification || null) || null,
-          // Accept multiple server representations: string status containing 'verif', or boolean flags
           verified: (
             ((p.verification_status || p.verification || '') + '').toLowerCase().includes('verif') ||
             (p.is_verified === true) ||
@@ -124,7 +125,7 @@ export default function Search() {
       })
       .finally(() => setLoading(false));
     return () => { mounted = false; };
-  }, [searchQuery, filterType, availableFrom, availableTo]);
+  }, [searchQuery, filterType, availableFrom, availableTo, onlyVerified]);
 
   const handleReset = () => {
     setIsReset(true);
@@ -152,7 +153,6 @@ export default function Search() {
 
   const filteredProperties = properties
     .filter(p => {
-      // apply verified filter client-side as a fallback
       if (onlyVerified && !p.verified) return false;
       const parseNum = (v: any) => {
         if (v == null) return 0;
@@ -200,7 +200,6 @@ export default function Search() {
         default: res = 0;
       }
 
-      // tie-breaker: if equal, prefer higher rating, then lower price, then title
       if (res === 0) {
         res = compare(bRating, aRating) || compare(aPrice, bPrice) || a.title.localeCompare(b.title || '');
       }
@@ -216,6 +215,9 @@ export default function Search() {
       <SearchPill 
         isFixed={true} 
         initialValue={searchQuery || ''} 
+        initialPropertyType={filterType}
+        initialAvailableFrom={availableFrom}
+        initialAvailableTo={availableTo}
         placeholder="All locations" 
         onReset={handleReset}
         onSearch={handleSearch}
@@ -229,7 +231,6 @@ export default function Search() {
             </>
           </h1>
           <div className="flex gap-2 relative items-center">
-            {/* Filter Button & Dropdown */}
             <div className="relative">
               <button 
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -255,10 +256,9 @@ export default function Search() {
                   >
                     <div className="flex justify-between items-center mb-6">
                       <h3 className="font-serif text-lg text-charcoal">Filters</h3>
-                      <button onClick={() => { setPriceRange({min: 0, max: 100000}); setMinRating(0); setFilterType(null); setAvailableFrom(null); setAvailableTo(null); setOnlyVerified(false); }} className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40 hover:text-charcoal">Reset</button>
+                      <button onClick={() => { setPriceRange({min: 0, max: 100000}); setMinRating(0); }} className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40 hover:text-charcoal">Reset</button>
                     </div>
 
-                    {/* Price Range */}
                     <div className="mb-6">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3 block">Price Range</label>
                       <div className="flex gap-3 items-center mb-3">
@@ -284,7 +284,6 @@ export default function Search() {
                       </div>
                     </div>
 
-                    {/* Rating Filter */}
                     <div>
                       <label className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3 block">Rating</label>
                       <div className="space-y-2">
@@ -309,29 +308,48 @@ export default function Search() {
                         ))}
                       </div>
                     </div>
-
-                    {/* Verified Filter */}
-                    <div className="mt-6">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3 block">Verification</label>
-                      <div className="flex items-center gap-3">
-                        <input id="onlyVerified" type="checkbox" checked={onlyVerified} onChange={(e) => setOnlyVerified(e.target.checked)} className="w-4 h-4" />
-                        <label htmlFor="onlyVerified" className="text-sm text-charcoal">Show only verified listings</label>
-                      </div>
-                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            {/* Inline property-name search */}
             <div className="relative">
-              <input
-                type="text"
-                placeholder="Search by property name"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="px-4 py-2 rounded-full border border-charcoal/10 focus:outline-none focus:ring-1 focus:ring-charcoal/20 w-64 text-sm"
-              />
+              <button 
+                onClick={() => setIsSortOpen(!isSortOpen)}
+                className="px-4 py-2 rounded-full border border-charcoal/10 hover:bg-charcoal/5 text-charcoal/60 hover:text-charcoal transition-colors text-xs uppercase tracking-wider flex items-center gap-2"
+              >
+                <ArrowUp className="w-3 h-3" /> Sort
+              </button>
+
+              <AnimatePresence>
+                {isSortOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl shadow-charcoal/10 border border-charcoal/5 p-2 z-20"
+                  >
+                    {[
+                      { id: 'newest', label: 'Newest First', icon: Calendar },
+                      { id: 'price-asc', label: 'Price: Low to High', icon: ArrowUp },
+                      { id: 'price-desc', label: 'Price: High to Low', icon: ArrowDown },
+                      { id: 'rating-asc', label: 'Rating: Low to High', icon: Star },
+                      { id: 'rating-desc', label: 'Rating: High to Low', icon: Star },
+                    ].map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => { setSortOption(option.id); setIsSortOpen(false); }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors ${
+                          sortOption === option.id ? 'bg-charcoal text-white' : 'text-charcoal/60 hover:bg-bone'
+                        }`}
+                      >
+                        <option.icon className="w-3 h-3" />
+                        {option.label}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </div>
@@ -347,7 +365,7 @@ export default function Search() {
               viewport={{ once: true }}
               transition={{ duration: 0.8, delay: index * 0.1 }}
             >
-              <Link to={`/property/${property.id}`} className={`group block ${property.verified ? '' : 'opacity-70 grayscale'}`}>
+              <Link to={`/property/${property.id}`} className="group block">
                 <div className="relative aspect-[4/3] overflow-hidden rounded-2xl mb-4">
                   <img
                     src={property.image || getPlaceholderImage(property.id)}
@@ -355,7 +373,6 @@ export default function Search() {
                     onError={(e) => {
                       const el = e.currentTarget as HTMLImageElement;
                       const src = el.src || '';
-                      // detect current local unsplashN and advance to next local image
                       const m = src.match(/unsplash(\d+)\.jpg$/);
                       if (m) {
                         const num = Number(m[1]);
@@ -363,22 +380,16 @@ export default function Search() {
                           el.src = `/images/unsplash${num + 1}.jpg`;
                           return;
                         }
-                        // exhausted local images -> fallback to hotlink
                         const idx = property.id ? ((property.id - 1) % unsplashIds.length) : 0;
                         el.src = `https://source.unsplash.com/${unsplashIds[idx]}/1600x900`;
                         return;
                       }
-                      // initial failure or non-local src: start with first local image
                       el.src = localImages[0];
                     }}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                   />
                   <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
-                    {property.verified ? (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-green-600">Verified</span>
-                    ) : (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-charcoal/40">Unverified</span>
-                    )}
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-charcoal">Verified</span>
                   </div>
                 </div>
                 <div className="flex justify-between items-start">
