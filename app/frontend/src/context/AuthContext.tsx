@@ -29,10 +29,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const me = await apiFetch('/me');
-        setUser({ fullName: (me as any).full_name || '', email: (me as any).email || (me as any).email });
+        setUser({ 
+          fullName: (me as any).full_name || '', 
+          email: (me as any).email, 
+          role: (me as any).role 
+        });
       } catch {
         // token invalid or /me failed
         localStorage.removeItem('sms_token');
+        localStorage.removeItem('sms_user_role');
         setUser(null);
       }
     })();
@@ -48,13 +53,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('sms_token', token);
     // fetch profile
     const me = await apiFetch('/me');
-    setUser({ fullName: (me as any).full_name || '', email: (me as any).email, role: (me as any).role });
+    const role = (me as any).role;
+    setUser({ fullName: (me as any).full_name || '', email: (me as any).email, role });
+    localStorage.setItem('sms_user_role', role);
     setShowWelcome(true);
     setTimeout(() => setShowWelcome(false), 3000);
   };
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('sms_user_role');
   };
 
   return (

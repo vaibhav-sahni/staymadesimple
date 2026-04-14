@@ -16,6 +16,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import About from './pages/About';
 import Dashboard from './pages/Dashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import MyProperties from './pages/MyProperties';
 import AddProperty from './pages/AddProperty';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -62,6 +63,7 @@ function AppContent() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/my-properties" element={<MyProperties />} />
         <Route path="/my-properties/add" element={<AddProperty />} />
+        <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
       
       {!isLoginPage && <Footer />}

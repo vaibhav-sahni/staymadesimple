@@ -1,22 +1,36 @@
 import { motion } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Mail, Lock } from 'lucide-react';
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const { login, user } = useAuth();
   const navigate = useNavigate();
+
+  // Redirect based on role once user is logged in
+  useEffect(() => {
+    if (user && user.role) {
+      if (user.role === 'Admin') {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
+    }
+  }, [user, navigate]);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
     try {
       await login(email, password);
-      navigate('/dashboard');
+      // Navigation happens via useEffect when user.role is set
     } catch (err) {
+      setIsLoading(false);
       alert('Login failed: ' + (err instanceof Error ? err.message : 'unknown'));
     }
   };
@@ -93,8 +107,11 @@ export default function Login() {
                 </div>
               </div>
 
-              <button className="w-full bg-charcoal text-white py-3.5 rounded-xl font-sans text-xs uppercase tracking-widest font-bold hover:bg-black transition-all hover:scale-[1.01] active:scale-[0.99]">
-                Log In
+              <button 
+                disabled={isLoading}
+                className="w-full bg-charcoal text-white py-3.5 rounded-xl font-sans text-xs uppercase tracking-widest font-bold hover:bg-black transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? 'Logging in...' : 'Log In'}
               </button>
             </motion.form>
 
