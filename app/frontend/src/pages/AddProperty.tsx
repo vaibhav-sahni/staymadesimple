@@ -1,33 +1,50 @@
 import { motion } from 'motion/react';
 import { 
-  ArrowLeft, Upload, Image as ImageIcon, X, 
-  Wifi, Monitor, Thermometer, Car, Shield, Sparkles, Coffee, Dumbbell,
-  DollarSign, Home, MapPin, Bed, Bath
+  ArrowLeft, Upload, Image as ImageIcon, 
+  Home, MapPin
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { apiPost } from '../lib/api';
 
-const facilitiesList = [
-  { id: 'wifi', label: 'Free WiFi', icon: Wifi },
-  { id: 'tv', label: 'Smart TV', icon: Monitor },
-  { id: 'ac', label: 'AC & Heating', icon: Thermometer },
-  { id: 'parking', label: 'Free Parking', icon: Car },
-  { id: 'security', label: '24/7 Security', icon: Shield },
-  { id: 'cleaning', label: 'Housekeeping', icon: Sparkles },
-  { id: 'coffee', label: 'Coffee Machine', icon: Coffee },
-  { id: 'gym', label: 'Gym Access', icon: Dumbbell },
-];
-
-const propertyTypes = ['Apartment', 'Villa', 'Studio', 'Penthouse', 'Condo'];
+const propertyTypes = ['Guest House', 'Boys PG', 'Girls PG', 'Serviced Apartment'];
 
 export default function AddProperty() {
-  const [selectedFacilities, setSelectedFacilities] = useState<string[]>([]);
+  const navigate = useNavigate();
   const [selectedType, setSelectedType] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [googleMapsLink, setGoogleMapsLink] = useState('');
+  const [rent, setRent] = useState('');
+  const [numberOfRooms, setNumberOfRooms] = useState('1');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
-  const toggleFacility = (id: string) => {
-    setSelectedFacilities(prev => 
-      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
-    );
+  const handlePublish = async () => {
+    if (!title || !selectedType || !city || !address || !rent) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+    setError('');
+    setSubmitting(true);
+    try {
+      await apiPost('/owner/properties', {
+        property_description: title,
+        room_description: description || title,
+        property_type: selectedType,
+        city,
+        address,
+        google_maps_link: googleMapsLink || null,
+        number_of_rooms: parseInt(numberOfRooms) || 1,
+        rent_per_month: parseFloat(rent),
+      });
+      navigate('/my-properties');
+    } catch {
+      setError('Failed to create property. Make sure you are logged in as an Owner.');
+    }
+    setSubmitting(false);
   };
 
   return (
@@ -106,7 +123,9 @@ export default function AddProperty() {
                   <label className="block text-xs font-bold uppercase tracking-widest text-charcoal/60 mb-3">Property Title</label>
                   <input 
                     type="text" 
-                    placeholder="e.g. The Kensington Suite" 
+                    placeholder="e.g. Cozy guest house near downtown" 
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
                     className="w-full bg-white border-b border-charcoal/10 px-0 py-4 text-2xl font-serif text-charcoal placeholder:text-charcoal/20 focus:outline-none focus:border-charcoal transition-colors"
                   />
                 </div>
@@ -116,7 +135,20 @@ export default function AddProperty() {
                   <textarea 
                     rows={5}
                     placeholder="Describe the unique features, ambiance, and lifestyle of your property..." 
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                     className="w-full bg-white rounded-2xl border border-charcoal/10 p-6 text-sm text-charcoal leading-relaxed placeholder:text-charcoal/30 focus:outline-none focus:border-charcoal/30 focus:ring-1 focus:ring-charcoal/30 transition-all resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-charcoal/60 mb-3">City</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Bangalore" 
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="w-full bg-transparent border-b border-charcoal/10 py-4 text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:border-charcoal transition-colors"
                   />
                 </div>
 
@@ -127,39 +159,27 @@ export default function AddProperty() {
                     <input 
                       type="text" 
                       placeholder="Enter full address" 
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
                       className="w-full bg-transparent border-b border-charcoal/10 pl-8 pr-4 py-4 text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:border-charcoal transition-colors"
                     />
                   </div>
                 </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-charcoal/60 mb-3">Google Maps Link (optional)</label>
+                  <input 
+                    type="text" 
+                    placeholder="https://maps.google.com/..." 
+                    value={googleMapsLink}
+                    onChange={(e) => setGoogleMapsLink(e.target.value)}
+                    className="w-full bg-transparent border-b border-charcoal/10 py-4 text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:border-charcoal transition-colors"
+                  />
+                </div>
               </div>
             </motion.section>
 
-            {/* Facilities */}
-            <motion.section 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-            >
-              <h3 className="font-serif text-xl text-charcoal mb-6">Facilities & Amenities</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {facilitiesList.map((facility) => (
-                  <button
-                    key={facility.id}
-                    onClick={() => toggleFacility(facility.id)}
-                    className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-3 transition-all duration-300 ${
-                      selectedFacilities.includes(facility.id)
-                        ? 'bg-charcoal text-white border-charcoal shadow-lg shadow-charcoal/20'
-                        : 'bg-white text-charcoal/60 border-charcoal/5 hover:border-charcoal/20 hover:bg-charcoal/5'
-                    }`}
-                  >
-                    <facility.icon className={`w-6 h-6 ${selectedFacilities.includes(facility.id) ? 'text-gold' : 'text-charcoal/40'}`} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-center">{facility.label}</span>
-                  </button>
-                ))}
-              </div>
-            </motion.section>
-
-          </div>
+            </div>
 
           {/* Sidebar Controls */}
           <div className="lg:col-span-4 space-y-8">
@@ -196,42 +216,51 @@ export default function AddProperty() {
 
                 {/* Pricing */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3">Monthly Rent</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3">Monthly Rent (per room)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40 font-serif text-lg">₹</span>
                     <input 
                       type="number" 
                       placeholder="0" 
+                      value={rent}
+                      onChange={(e) => setRent(e.target.value)}
                       className="w-full bg-bone rounded-xl pl-10 pr-4 py-3 text-lg font-serif text-charcoal focus:outline-none focus:ring-1 focus:ring-charcoal/20"
                     />
                   </div>
                 </div>
 
-                {/* Rooms */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3">Bedrooms</label>
-                    <div className="flex items-center bg-bone rounded-xl px-4 py-3">
-                      <Bed className="w-4 h-4 text-charcoal/40 mr-3" />
-                      <input type="number" className="w-full bg-transparent text-charcoal font-bold focus:outline-none" defaultValue={1} min={0} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3">Bathrooms</label>
-                    <div className="flex items-center bg-bone rounded-xl px-4 py-3">
-                      <Bath className="w-4 h-4 text-charcoal/40 mr-3" />
-                      <input type="number" className="w-full bg-transparent text-charcoal font-bold focus:outline-none" defaultValue={1} min={0} />
-                    </div>
+                {/* Number of Rooms */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-charcoal/40 mb-3">Number of Rooms</label>
+                  <div className="flex items-center bg-bone rounded-xl px-4 py-3">
+                    <Home className="w-4 h-4 text-charcoal/40 mr-3" />
+                    <input 
+                      type="number" 
+                      value={numberOfRooms}
+                      onChange={(e) => setNumberOfRooms(e.target.value)}
+                      className="w-full bg-transparent text-charcoal font-bold focus:outline-none" 
+                      min={1} 
+                    />
                   </div>
                 </div>
 
+                {error && (
+                  <p className="text-red-500 text-sm">{error}</p>
+                )}
+
                 <div className="pt-6 border-t border-charcoal/5 flex flex-col gap-3">
-                  <button className="w-full bg-charcoal text-white py-4 rounded-xl font-sans text-xs uppercase tracking-widest font-bold hover:bg-black transition-colors shadow-lg shadow-charcoal/20">
-                    Publish Listing
+                  <button 
+                    onClick={handlePublish}
+                    disabled={submitting}
+                    className="w-full bg-charcoal text-white py-4 rounded-xl font-sans text-xs uppercase tracking-widest font-bold hover:bg-black transition-colors shadow-lg shadow-charcoal/20 disabled:opacity-50"
+                  >
+                    {submitting ? 'Publishing...' : 'Publish Listing'}
                   </button>
-                  <button className="w-full bg-white border border-charcoal/10 text-charcoal py-4 rounded-xl font-sans text-xs uppercase tracking-widest font-bold hover:bg-charcoal/5 transition-colors">
-                    Save Draft
-                  </button>
+                  <Link to="/my-properties">
+                    <button className="w-full bg-white border border-charcoal/10 text-charcoal py-4 rounded-xl font-sans text-xs uppercase tracking-widest font-bold hover:bg-charcoal/5 transition-colors">
+                      Cancel
+                    </button>
+                  </Link>
                 </div>
 
               </div>

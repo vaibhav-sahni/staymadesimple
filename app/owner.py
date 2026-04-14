@@ -18,6 +18,50 @@ router = APIRouter(prefix="/owner", tags=["owner"])
 # helper was removed intentionally to make transaction boundaries visible in code.
 
 
+@router.get("/properties", response_model=list[PropertyRead])
+def list_owner_properties(
+    current_user: UserAuth = Depends(require_role("Owner")),
+    session: Session = Depends(get_rental_session),
+):
+    try:
+        from .models import Customer, Owner
+        cust = session.exec(select(Customer).where(Customer.user_id == current_user.user_id)).first()
+        if not cust:
+            raise HTTPException(status_code=404, detail="Customer profile not found in rental DB")
+        owner = session.exec(select(Owner).where(Owner.customer_id == cust.customer_id)).first()
+        if not owner:
+            raise HTTPException(status_code=403, detail="User is not an owner")
+
+        props = session.exec(select(Property).where(Property.owner_id == owner.owner_id)).all()
+        results = []
+        for p in props:
+            rooms = session.exec(select(Room).where(Room.property_id == p.property_id)).all()
+            avg_rent = None
+            if rooms:
+                rents = [r.rent_per_month for r in rooms if r.rent_per_month]
+                avg_rent = sum(rents) / len(rents) if rents else None
+            results.append(PropertyRead(
+                property_id=p.property_id,
+                owner_id=p.owner_id,
+                property_description=p.property_description,
+                room_description=p.room_description,
+                property_type=p.property_type,
+                city=p.city,
+                address=p.address,
+                google_maps_link=p.google_maps_link,
+                verification_status=p.verification_status,
+                average_rating=p.average_rating,
+                average_rent=avg_rent,
+            ))
+        return results
+    except HTTPException:
+        raise
+    except Exception as exc:
+        tb = traceback.format_exc()
+        logger.exception("list_owner_properties failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Internal server error (see server logs)\n{tb}")
+
+
 @router.post("/properties", response_model=PropertyRead)
 def create_property(
     payload: PropertyCreate,

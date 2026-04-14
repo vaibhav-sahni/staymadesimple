@@ -1,14 +1,15 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface User {
   fullName: string;
   email: string;
+  role: string;
   verificationStatus: 'Verified' | 'Unverified';
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string) => void;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   showWelcome: boolean;
   setShowWelcome: (show: boolean) => void;
@@ -20,26 +21,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  const login = (email: string) => {
-    // Mock login logic
-    if (email === 'basantiapramag@gmail.com') {
-      const mockUser: User = {
-        fullName: 'Basantia Pramag', // Inferring name from email for now, or could be hardcoded
-        email: email,
-        verificationStatus: 'Verified'
-      };
-      setUser(mockUser);
+  // Restore session from token on mount
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (token && !user) {
+      fetch('http://localhost:8000/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((me) => {
+          if (me) {
+            setUser({
+              fullName: me.full_name || '',
+              email: me.email || '',
+              role: me.role || 'User',
+              verificationStatus: 'Verified',
+            });
+          } else {
+            localStorage.removeItem('auth_token');
+          }
+        })
+        .catch(() => localStorage.removeItem('auth_token'));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const login = async (email: string, password: string) => {
+    try {
+      const res = await fetch('http://localhost:8000/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      const token = data.access_token;
+      if (!token) return false;
+      localStorage.setItem('auth_token', token);
+
+      const meRes = await fetch('http://localhost:8000/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!meRes.ok) return false;
+      const me = await meRes.json();
+      setUser({
+        fullName: me.full_name || '',
+        email: me.email || email,
+        role: me.role || 'User',
+        verificationStatus: 'Verified',
+      });
       setShowWelcome(true);
-      
-      // Hide welcome screen after 3 seconds
-      setTimeout(() => {
-        setShowWelcome(false);
-      }, 3000);
+      setTimeout(() => setShowWelcome(false), 3000);
+      return true;
+    } catch {
+      return false;
     }
   };
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('auth_token');
   };
 
   return (

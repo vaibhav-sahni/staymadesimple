@@ -91,8 +91,15 @@ def ping():
 
 
 @router.get("/me")
-def me(current_user: UserAuth = Depends(get_current_user)):
-    return {"user_id": current_user.user_id, "email": current_user.email, "role": current_user.role}
+def me(current_user: UserAuth = Depends(get_current_user), rental_session: Session = Depends(get_rental_session)):
+    # Try to fetch full_name from customer profile in rental_db
+    cust = rental_session.exec(select(Customer).where(Customer.user_id == current_user.user_id)).first()
+    return {
+        "user_id": current_user.user_id,
+        "email": current_user.email,
+        "role": current_user.role,
+        "full_name": cust.full_name if cust else "",
+    }
 
 
 # Simple PBKDF2 password hashing for dev/testing. Format: pbkdf2$<iters>$<salt_hex>$<hash_hex>

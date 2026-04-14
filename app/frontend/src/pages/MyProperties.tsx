@@ -4,59 +4,33 @@ import {
   MapPin, Home, DollarSign, Calendar, ArrowLeft, ChevronDown, Star, X, ArrowUp, ArrowDown, CheckCircle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiGet } from '../lib/api';
 
-// Mock Data for User's Properties
-const initialProperties = [
-  {
-    id: 'PROP-8821',
-    name: 'The Kensington Suite',
-    location: 'Indiranagar, Bangalore',
-    type: 'Serviced Apartment',
-    price: 45000,
-    status: 'Active',
-    listedDate: '12 Mar 2025',
-    views: 1240,
-    rating: 4.8,
-    reviews: 24
-  },
-  {
-    id: 'PROP-9932',
-    name: 'Azure Heights Villa',
-    location: 'Whitefield, Bangalore',
-    type: '4BHK Villa',
-    price: 85000,
-    status: 'Pending',
-    listedDate: '05 Mar 2026',
-    views: 45,
-    rating: 0,
-    reviews: 0
-  },
-  {
-    id: 'PROP-7721',
-    name: 'Urban Studio Loft',
-    location: 'Koramangala, Bangalore',
-    type: 'Studio',
-    price: 28000,
-    status: 'Rented',
-    listedDate: '10 Jan 2025',
-    views: 892,
-    rating: 4.5,
-    reviews: 18
-  },
-  {
-    id: 'PROP-6654',
-    name: 'Greenwood Residency',
-    location: 'HSR Layout, Bangalore',
-    type: '3BHK Apartment',
-    price: 32000,
-    status: 'Active',
-    listedDate: '28 Feb 2026',
-    views: 356,
-    rating: 4.2,
-    reviews: 8
-  }
-];
+interface PropertyData {
+  property_id: number;
+  owner_id: number;
+  property_description: string;
+  room_description: string;
+  property_type: string | null;
+  city: string;
+  address: string;
+  google_maps_link: string | null;
+  verification_status: string | null;
+  average_rating: number | null;
+  average_rent: number | null;
+}
+
+// Mapped property shape for the UI
+interface UIProperty {
+  id: number;
+  name: string;
+  location: string;
+  type: string;
+  price: number;
+  status: string;
+  rating: number;
+}
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -78,7 +52,8 @@ const itemVariants = {
 };
 
 export default function MyProperties() {
-  const [properties, setProperties] = useState(initialProperties);
+  const [properties, setProperties] = useState<UIProperty[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
   
@@ -87,7 +62,27 @@ export default function MyProperties() {
   const [minRating, setMinRating] = useState(0);
   
   // Sort State
-  const [sortOption, setSortOption] = useState('newest'); // newest, price-asc, price-desc, rating-asc, rating-desc
+  const [sortOption, setSortOption] = useState('newest');
+
+  useEffect(() => {
+    async function fetchProperties() {
+      try {
+        const data = await apiGet<PropertyData[]>('/owner/properties');
+        const mapped: UIProperty[] = data.map((p) => ({
+          id: p.property_id,
+          name: p.property_description,
+          location: `${p.city}, ${p.address}`,
+          type: p.property_type || 'N/A',
+          price: p.average_rent || 0,
+          status: p.verification_status === 'Verified' ? 'Active' : (p.verification_status || 'Pending'),
+          rating: p.average_rating || 0,
+        }));
+        setProperties(mapped);
+      } catch { /* owner may not have properties */ }
+      setLoading(false);
+    }
+    fetchProperties();
+  }, []);
 
   // Apply Filters and Sort
   const filteredProperties = properties
@@ -105,6 +100,14 @@ export default function MyProperties() {
         default: return 0;
       }
     });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bone pt-32 pb-20 px-4 md:px-12 flex items-center justify-center">
+        <p className="font-serif text-2xl text-charcoal/40">Loading properties...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bone pt-32 pb-20 px-4 md:px-12">
@@ -296,7 +299,6 @@ export default function MyProperties() {
                   <th className="text-left py-6 px-4 text-[10px] font-bold uppercase tracking-widest text-charcoal/40">Rent</th>
                   <th className="text-left py-6 px-4 text-[10px] font-bold uppercase tracking-widest text-charcoal/40">Status</th>
                   <th className="text-left py-6 px-4 text-[10px] font-bold uppercase tracking-widest text-charcoal/40">Rating</th>
-                  <th className="text-left py-6 px-4 text-[10px] font-bold uppercase tracking-widest text-charcoal/40">Listed On</th>
                   <th className="text-right py-6 px-8 text-[10px] font-bold uppercase tracking-widest text-charcoal/40">Action</th>
                 </tr>
               </thead>
@@ -314,7 +316,7 @@ export default function MyProperties() {
                           <MapPin className="w-3 h-3" />
                           <span className="text-xs font-sans">{property.location}</span>
                         </div>
-                        <span className="text-[10px] font-mono text-charcoal/30 mt-1 block">{property.id}</span>
+                        <span className="text-[10px] font-mono text-charcoal/30 mt-1 block">PROP-{property.id}</span>
                       </div>
                     </td>
                     
@@ -351,16 +353,6 @@ export default function MyProperties() {
                       <div className="flex items-center gap-1">
                         <Star className={`w-3 h-3 ${property.rating > 0 ? 'text-gold fill-gold' : 'text-charcoal/20'}`} />
                         <span className="text-sm font-bold text-charcoal">{property.rating > 0 ? property.rating : '-'}</span>
-                        {property.reviews > 0 && (
-                          <span className="text-[10px] text-charcoal/40">({property.reviews})</span>
-                        )}
-                      </div>
-                    </td>
-                    
-                    <td className="py-6 px-4">
-                      <div className="flex items-center gap-2 text-charcoal/60">
-                        <Calendar className="w-3 h-3 text-charcoal/30" />
-                        <span className="text-xs font-mono">{property.listedDate}</span>
                       </div>
                     </td>
                     
