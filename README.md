@@ -1,13 +1,22 @@
 # 🏠 XOOMS - Premium Property Rental Platform
 
-Welcome to **XOOMS** – your gateway to verified, premium rental properties worldwide. We're bridging the gap between premium rental expectations and reality by offering verified living standards with seamless property management and booking experiences.
+Welcome to **XOOMS** – your gateway to verified, premium rental properties worldwide. We're bridging the gap between premium rental expectations and reality by offering verified living standards [...]
 
 ![XOOMS](https://img.shields.io/badge/XOOMS-Premium%20Rentals-brightgreen)
 ![Status](https://img.shields.io/badge/Status-Active-blue)
 
+<!-- Project screenshots (placeholders). Add your actual images to `assets/screenshots/1.png` .. `4.png` to have them appear on GitHub. -->
+<div align="center">
+
+| ![Screenshot 1](assets/screenshots/1.png) | ![Screenshot 2](assets/screenshots/2.png) |
+|:---:|:---:|
+| ![Screenshot 3](assets/screenshots/3.png) | ![Screenshot 4](assets/screenshots/4.png) |
+
+</div>
+
 ## Project Overview
 
-XOOMS is a comprehensive property rental platform designed for both property owners and renters. Whether you're looking to book your next premium stay or manage a global property portfolio, XOOMS makes it simple, secure, and enjoyable.
+XOOMS is a comprehensive property rental platform designed for both property owners and renters. Whether you're looking to book your next premium stay or manage a global property portfolio, XOOMS [...]
 
 **Verified Living Standards** • **Global Properties** • **Secure Transactions** • **Easy Management**
 
@@ -15,7 +24,7 @@ XOOMS is a comprehensive property rental platform designed for both property own
 
 ## What is XOOMS?
 
-XOOMS is a modern web application that connects property owners with renters seeking verified, premium accommodations. The platform handles everything from property listing and verification to booking and payment – all in one place.
+XOOMS is a modern web application that connects property owners with renters seeking verified, premium accommodations. The platform handles everything from property listing and verification to boo[...]
 
 ### For Property Owners
 - **Showcase Your Properties**: Upload beautiful photos and detailed descriptions of your properties
